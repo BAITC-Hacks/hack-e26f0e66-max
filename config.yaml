@@ -9,9 +9,37 @@
 
 seed: 42                       # single random seed for Louvain and layouts
 
+# ---------------------------------------------------------------------------
+# Facts announced in the brief and in data/README.md. They live here rather
+# than in code so that profile.py contains no numeric literals at all, and so
+# that a change in the organizers' data is a one-line config edit. Every one of
+# these is CHECKED against the files, never trusted (guideline §3).
+# ---------------------------------------------------------------------------
+expected:
+  n_nodes: 2248
+  n_edges: 3119
+  n_tx: 4840
+  n_seeds: 81
+  hop_distribution: {0: 81, 1: 472, 2: 462, 3: 789, 4: 444}
+  total_turnover_kzt: 365890012
+  n_truncated: 444              # MAX_DEPTH nodes with no outgoing edge
+  n_seeds_absent_from_edges: 19
+  n_seeds_receive_only: 12
+  # "16 components ... plus the 19 isolated seeds" -> 16 of size >= 2, 35 total.
+  n_components_multi: 16
+  n_isolated_seeds: 19
+  # Counts nodes that have a traced inflow. Without that restriction it is 377,
+  # because a node with in_sum == 0 trivially sends more than it receives.
+  n_sent_exceeds_received: 354
+  # Counts the RAW out/in ratio including seeds; our seed-excluded pass_ratio
+  # puts 70 nodes in the band. Both are reported.
+  n_pass_ratio_band: 72
+  pass_ratio_band: [0.8, 1.2]
+  min_amount_kzt: 5000
+
 paths:
-  data: data
-  outputs: outputs
+  data: data                   # folder to ingest; any tabular files, see `input`
+  outputs: output_files        # all deliverables land here
 
 # ---------------------------------------------------------------------------
 # Role gates (guideline §8.2). Values are round and explainable on purpose —
@@ -144,10 +172,162 @@ extras:
   anomalies: {enabled: false, near_threshold_kzt: 5500, round_amount_modulo: 100000}
   completeness: {enabled: true}
 
-assistant:
+# ===========================================================================
+# INPUT DISCOVERY
+# The brief promises three parquet files, but the tool must not depend on
+# that. Ingestion discovers whatever tabular files it is pointed at and maps
+# their columns onto the canonical schema below. The deterministic matcher
+# runs first; the ingest agent is consulted only for columns it cannot
+# resolve, and its answer is validated against the data before use.
+# ===========================================================================
+input:
+  # Extensions scanned, in preference order.
+  extensions: [".parquet", ".csv", ".tsv", ".json", ".jsonl", ".xlsx"]
+  recursive: true
+  max_files: 32
+  # Rows sampled per file when profiling columns for the mapping step.
+  sample_rows: 2000
+  # Canonical fields and the column names that map to them without asking an
+  # LLM anything. Matching is case-insensitive and ignores _ - and spaces.
+  aliases:
+    src: [src, source, from, payer, sender, from_gid, src_gid, payer_gid, debit, otpravitel]
+    dst: [dst, dest, destination, to, recipient, receiver, to_gid, dst_gid, beneficiary, credit, poluchatel]
+    amount: [sum_kzt, amount, value, sum, amt, total, kzt, summa]
+    n_tx: [n_tx, tx_count, count, n, num_tx, transactions]
+    date: [date, dt, timestamp, ts, datetime, op_date, tx_date, value_date]
+    gid: [gid, id, node, node_id, client_id, customer_id, account, account_id]
+    depth: [depth, hop, level, layer, distance]
+    is_seed: [is_seed, seed, is_target, flagged, known]
+  # A file is classified by which canonical fields it carries.
+  #   edges        = src + dst + amount (+ n_tx)   aggregated pairs
+  #   transactions = src + dst + amount + date     individual transfers
+  #   nodes        = gid (+ depth, is_seed)        the node list
+  # If no node list is supplied, the node set is derived from the edges and
+  # `depth` is recomputed by BFS from the seeds. If no seeds are supplied,
+  # every node with depth 0 (no traced inflow) is treated as a seed and the
+  # README-facing report says so loudly.
+  derive_nodes_if_missing: true
+  derive_depth_if_missing: true
+
+# ===========================================================================
+# LLM + AGENT LAYER
+# Hard rule (brief §9, guideline §2): agents NEVER decide a role, a score, a
+# cluster or a rank. Those come from the rule engine in roles.py, the Louvain
+# run in clustering.py and the weighted sum in priority.py. Agents map input
+# schemas, phrase text that a validator checks against the rule trace, answer
+# analyst questions through deterministic tools, and plan data requests.
+# ===========================================================================
+llm:
+  enabled: true                # set false, or MONEYGRAPH_NO_LLM=1, for a pure offline run
+  provider: openai
+  api_key_env: [OPENAI_KEY, OPENAI_API_KEY]   # .env is loaded first; first match wins
+  model: gpt-6-luna
+  reasoning_effort: low        # low | medium | high — low is the cheap test setting
+  temperature: 0.2
+  max_output_tokens: 2000
+  timeout_s: 60
+  max_retries: 2
+  # Hard ceilings for one pipeline run. Exceeding either aborts the agent layer
+  # and the run finishes deterministically rather than silently spending more.
+  # Ceilings for ONE pipeline run, across the whole crew. Exceeding any of them
+  # shuts the agent layer down mid-run; the deterministic pipeline still
+  # finishes and every export is still produced.
+  budget:
+    max_calls: 150
+    max_usd: 2.00             # null disables the check
+    max_total_tokens: 500000
+
+  # ---- Pricing for the spend tracer -------------------------------------
+  # USD per 1,000,000 tokens. VERIFY THESE against your provider's current
+  # price list before quoting a number to anyone: they are not knowable from
+  # inside this repo. Any model left null reports token counts with the cost
+  # shown as "unpriced" — the tracer never invents a dollar figure.
+  pricing:
+    gpt-6-luna:
+      input: null
+      cached_input: null
+      output: null
+
+agents:
+  # Each agent can be switched off independently. Off means its deterministic
+  # fallback is used and the run stays valid — no agent is load-bearing for the
+  # three CSVs.
+  #
+  # Division of labour: agents decide WHAT TO EXAMINE and WHAT THE THRESHOLDS
+  # SHOULD BE; the rule engine decides WHAT THE ROLE IS. That keeps the system
+  # agentic while every role stays traceable to a formal comparison, which the
+  # brief requires (§9: a role without an explainable rule does not count).
+
+  planner:
+    enabled: true              # picks which passes to run on THIS dataset
+    max_investigations: 20     # hard cap the planner cannot exceed
+
+  calibrator:
+    enabled: true              # derives role thresholds from the distributions
+    # Its output is persisted to config.calibrated.yaml and reused, so a
+    # submitted run reproduces exactly. `python run.py --recalibrate` redoes it.
+    # Every proposal is simulated against the real data before acceptance: a
+    # threshold set that empties a role or hands one role half the graph is
+    # rejected and the config.yaml defaults are kept.
+
+  investigator:
+    enabled: true              # multi-step case dossier per priority account
+    max_steps: 6               # tool calls per account before it must conclude
+
+  critic:
+    enabled: true              # argues against the shortlist; writes review_notes.md
+
+  ingest:
+    enabled: true              # resolve ambiguous input columns
+    only_when_ambiguous: true  # skip the call entirely when the matcher is confident
+  narrator:
+    enabled: true              # phrase evidence / why / hypothesis from the rule trace
+    # Narration is batched to keep cost down: one call per batch of nodes.
+    batch_size: 40
+    # Only the nodes that matter get LLM phrasing; the rest use templates.
+    # Templates are always correct — narration is a readability upgrade, not a
+    # correctness dependency.
+    scope: top_and_clusters    # top_and_clusters | all | none
+  analyst:
+    enabled: true              # natural-language Q&A in the viewer
+    max_tool_calls: 8
+    # A single tool call can return a wide table; it is truncated to this many
+    # characters before reaching the model, so one query cannot exhaust the
+    # token budget on its own.
+    max_tool_result_chars: 20000
+  reviewer:
+    enabled: true              # completeness assessment -> data_requests.md
+
+# ===========================================================================
+# TRACING — wall clock, tokens and spend, for every stage and every LLM call.
+# ===========================================================================
+tracing:
   enabled: true
-  # The LLM only parses the question and phrases the answer; the facts always
-  # come from deterministic graph functions. Without the key, a dropdown form
-  # calls the same functions.
-  model: claude-sonnet-5
-  max_tokens: 1024
+  write_json: run_trace.json   # machine-readable, written into output_files/
+  write_markdown: run_trace.md # human-readable, shown in the viewer
+  print_live: true             # per-stage lines on stdout as the run proceeds
+  # The brief's hard latency limit. The pipeline asserts against this.
+  max_runtime_s: 300
+  # Warn (do not fail) once a stage passes this share of the budget.
+  stage_warn_share: 0.25
+
+# ===========================================================================
+# VIEWER (Gradio). Reads output_files/ only — it never recomputes.
+# ===========================================================================
+viewer:
+  host: 127.0.0.1
+  port: 7860
+  share: false
+  ego_hops_default: 1
+  ego_max_nodes: 300           # beyond this the ego map is capped and says so
+  cluster_map_max_nodes: 400
+  physics: false               # precomputed layout; keeps large maps responsive
+  role_colors:
+    coordinator: "#b3202c"
+    consolidator: "#d9822b"
+    distributor: "#2e7db3"
+    transit: "#6f42a1"
+    terminal: "#2f8f57"
+    cutoff: "#7a7a7a"
+    peripheral: "#b9c0c7"
+

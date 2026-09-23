@@ -14,3 +14,16 @@ venv/
 *.log
 .streamlit/secrets.toml
 .env
+# Secrets — never committed
+.env
+
+# Gradio
+.gradio/
+flagged/
+
+# NOTE: config.calibrated.yaml is deliberately NOT ignored. It holds the
+# thresholds the calibrator agent chose and is committed with the submission so
+# that the jury's run reproduces exactly those numbers.
+
+# Run logs from go.sh
+.run_logs/
