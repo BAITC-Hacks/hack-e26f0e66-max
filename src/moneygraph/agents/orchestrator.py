@@ -133,8 +133,18 @@ class Crew:
     # ---------------------------------------------------------- calibration
 
     def calibrate(self, features, max_depth: int, config_dir: Path,
-                  recalibrate: bool, edges=None) -> dict | None:
-        """Returns the calibration to apply, or None to keep config.yaml."""
+                  recalibrate: bool, edges=None, rerun: bool = True) -> dict | None:
+        """Return the calibration to apply, or None to keep `config.yaml`.
+
+        Three inputs, deliberately kept apart:
+
+        * a **saved** `config.calibrated.yaml` always wins unless `recalibrate`
+          — that file is committed so a reviewer reproduces these thresholds;
+        * `recalibrate` forces the agent to run again;
+        * `rerun` is the planner's opinion, and it only decides whether to
+          *derive* thresholds when none are saved. It must never decide which
+          thresholds are in force.
+        """
         from . import calibrator_agent as ca
 
         path = Path(config_dir) / ca.CALIBRATED_FILE
@@ -142,10 +152,14 @@ class Crew:
             saved = ca.load_calibration(path)
             if saved:
                 self.run_record.calibration = saved
-                print(f"     reusing {ca.CALIBRATED_FILE} "
+                print(f"     applying {ca.CALIBRATED_FILE} "
                       f"({len(saved.get('thresholds', {}))} thresholds) "
-                      f"— pass --recalibrate to redo")
+                      f"— pass --recalibrate to derive them again")
                 return saved
+            if not rerun:
+                print("     no saved calibration and the planner saw no need to "
+                      "derive one — using config.yaml thresholds")
+                return None
 
         context = ca.build_context(features, self.cfg, max_depth, edges=edges)
         agent = ca.CalibratorAgent(self.client, self.cfg, self.tracer)

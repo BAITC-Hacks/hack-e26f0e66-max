@@ -11,7 +11,7 @@
 'use strict';
 
 let D = null;                      // the whole payload
-let LANG = 'en';
+let LANG = 'ru';                   // replaced from the payload on boot
 let NODES = new Map();             // gid -> node
 let OUT = new Map(), IN = new Map();
 let TAB = 'about';
@@ -30,7 +30,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g,
 
 function t(key, fmt) {
   const entry = D.i18n.ui[key];
-  let s = entry ? (entry[LANG] || entry.en || key) : key;
+  let s = entry ? (entry[LANG] ?? entry.en ?? key) : key;
   if (fmt) for (const k in fmt) s = s.replaceAll('{' + k + '}', fmt[k]);
   return s;
 }
@@ -72,8 +72,11 @@ async function boot() {
     IN.get(e.d).push(e);
   }
 
-  LANG = localStorage.getItem('mg-lang') || 'en';
-  if (!D.i18n.languages[LANG]) LANG = 'en';
+  // The default comes from the payload, so the frontend and the Gradio
+  // interface cannot drift apart about which language opens first.
+  const fallback = D.i18n.default || 'ru';
+  LANG = localStorage.getItem('mg-lang') || fallback;
+  if (!D.i18n.languages[LANG]) LANG = fallback;
   document.documentElement.dataset.theme = localStorage.getItem('mg-theme') || 'light';
 
   buildLangs();

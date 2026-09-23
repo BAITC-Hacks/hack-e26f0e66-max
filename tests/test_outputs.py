@@ -583,6 +583,55 @@ def test_agent_run_falls_back_without_a_model(monkeypatch):
     assert result.output["investigate_top_n"] <= 5
 
 
+def test_saved_calibration_actually_produced_the_committed_outputs():
+    """Regression: applying the saved calibration was gated on the planner's
+    decision, so an LLM's answer decided which thresholds were in force. One run
+    used the calibrated values and the next silently used the defaults — the
+    committed `config.calibrated.yaml` no longer described the committed CSVs.
+    """
+    import yaml as _yaml
+
+    cal_path = ROOT / "config.calibrated.yaml"
+    if not cal_path.exists() or not (OUT / "nodes_roles.csv").exists():
+        pytest.skip("no calibration or outputs yet")
+    cal = _yaml.safe_load(cal_path.read_text(encoding="utf-8")) or {}
+    simulated = cal.get("simulated_counts") or {}
+    if not simulated:
+        pytest.skip("calibration carries no simulated counts")
+
+    actual = pd.read_csv(OUT / "nodes_roles.csv")["role"].value_counts().to_dict()
+    # `coordinator` is assigned in a later pass, so it draws nodes out of the
+    # base roles the simulation predicts; compare only the roles it covers.
+    for role in ("terminal", "cutoff", "distributor", "transit"):
+        if role in simulated:
+            assert simulated[role] == actual.get(role, 0), (
+                f"the committed calibration predicts {role}={simulated[role]} but "
+                f"nodes_roles.csv has {actual.get(role, 0)} — the saved "
+                f"thresholds were not the ones that ran")
+
+
+def test_planner_cannot_override_a_saved_calibration(monkeypatch, tmp_path):
+    """The planner decides whether to *derive* thresholds, never which ones
+    apply."""
+    from moneygraph.agents import calibrator_agent as ca
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.agents.orchestrator import Crew
+    from moneygraph.trace import RunTracer
+
+    monkeypatch.setenv("MONEYGRAPH_NO_LLM", "1")
+    saved = {"thresholds": {"terminal.max_pass": 0.05},
+             "rationale": {"terminal.max_pass": "x"}, "simulated_counts": {}}
+    ca.save_calibration(saved, tmp_path / ca.CALIBRATED_FILE, "test")
+
+    tracer = RunTracer(CFG)
+    crew = Crew(CFG, tracer, LLMClient(CFG, tracer))
+    # rerun=False is the planner saying "no need to recalibrate".
+    got = crew.calibrate(pd.DataFrame(), 4, tmp_path, recalibrate=False,
+                         rerun=False)
+    assert got is not None, "a saved calibration must be applied regardless"
+    assert got["thresholds"]["terminal.max_pass"] == 0.05
+
+
 def test_calibration_round_trips(tmp_path):
     """Persistence is what makes an agent-calibrated pipeline reproducible."""
     from moneygraph.agents import calibrator_agent as ca
@@ -971,14 +1020,14 @@ def test_readme_has_every_required_section():
     """The submission rules list these by name in Russian. README.md is English
     and carries each Russian title alongside its heading, so a reviewer working
     from the checklist finds all eight in either file."""
-    for name in ("README.md", "README.ru.md"):
+    for name in ("README.md", "README.en.md"):
         text = (ROOT / name).read_text(encoding="utf-8").lower()
         missing = [s for s in REQUIRED_README_SECTIONS if s not in text]
         assert not missing, f"{name} is missing: {missing}"
 
 
 def test_all_three_readmes_exist_and_cross_link():
-    names = ["README.md", "README.ru.md", "README.kk.md"]
+    names = READMES
     for name in names:
         assert (ROOT / name).exists(), f"{name} is missing"
     for name in names:
@@ -1007,12 +1056,27 @@ def test_machine_translated_languages_say_so():
             f"`{lang}` is reviewed and must not show the notice"
 
 
-def test_default_language_is_english():
+def test_default_language_is_russian_everywhere():
+    """One default, honoured by both interfaces and stated in the docs.
+
+    The frontend reads it from the exported payload rather than hardcoding a
+    language, so the two interfaces cannot drift apart about which one opens.
+    """
     from moneygraph.i18n import DEFAULT_LANG, LANGUAGES
 
-    assert DEFAULT_LANG == "en"
-    assert list(LANGUAGES) == ["en", "ru", "kk"], \
+    assert DEFAULT_LANG == "ru"
+    assert list(LANGUAGES) == ["ru", "en", "kk"], \
         "the switcher order is the dict order; keep the default first"
+
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    assert "D.i18n.default" in js, \
+        "the frontend must take its default language from the payload"
+
+    web = OUT / "web_data.json"
+    if web.exists():
+        payload = json.loads(web.read_text(encoding="utf-8"))
+        assert payload["i18n"]["default"] == DEFAULT_LANG
+        assert list(payload["i18n"]["languages"]) == list(LANGUAGES)
 
 
 def test_readme_documents_the_configured_model():
@@ -1021,7 +1085,7 @@ def test_readme_documents_the_configured_model():
     import yaml as _yaml
 
     model = _yaml.safe_load((ROOT / "config.yaml").read_text())["llm"]["model"]
-    for name in ("README.md", "README.ru.md", "README.kk.md"):
+    for name in READMES:
         assert model in (ROOT / name).read_text(encoding="utf-8"), \
             f"{name} does not mention the configured model `{model}`"
 
@@ -1135,6 +1199,39 @@ def test_web_data_carries_all_three_languages():
         assert set(c["hypothesis"]) == langs
 
 
+def test_web_data_trace_matches_the_run_that_produced_it():
+    """Regression: web_data.json was built inside the export stage, but the run
+    trace is written afterwards — so the standalone interface displayed the
+    *previous* run's cost and timing. A live agentic run showed 0 calls and
+    $0.00 because the run before it had been offline.
+    """
+    web_path, trace_path = OUT / "web_data.json", OUT / "run_trace.json"
+    if not (web_path.exists() and trace_path.exists()):
+        pytest.skip("outputs not generated yet")
+
+    embedded = (json.loads(web_path.read_text(encoding="utf-8")).get("trace") or {})
+    on_disk = json.loads(trace_path.read_text(encoding="utf-8"))
+    assert embedded, "web_data.json carries no run trace at all"
+
+    et, dt = embedded.get("totals", {}), on_disk["totals"]
+    for key in ("n_calls", "total_tokens", "input_tokens", "output_tokens"):
+        assert et.get(key) == dt.get(key), (
+            f"web_data.json reports {key}={et.get(key)} but the run trace says "
+            f"{dt.get(key)} — the interface is showing a previous run")
+    assert abs(embedded.get("total_runtime_s", 0) - on_disk["total_runtime_s"]) < 1.0
+
+
+def test_web_data_agent_log_matches_disk():
+    """Same ordering trap: agent_log.md is written after the stages finish."""
+    web_path = OUT / "web_data.json"
+    log_path = OUT / "agent_log.md"
+    if not (web_path.exists() and log_path.exists()):
+        pytest.skip("outputs not generated yet")
+    embedded = json.loads(web_path.read_text(encoding="utf-8"))["docs"]["agent_log"]
+    assert embedded == log_path.read_text(encoding="utf-8"), \
+        "the frontend is showing a stale agent log"
+
+
 def test_frontend_loads_no_remote_assets():
     """It must work with no internet: the brief allows a network call only for
     the optional LLM API."""
@@ -1166,7 +1263,8 @@ def test_frontend_server_confines_paths_to_the_outputs_folder(tmp_path):
 
 # ------------------------------------------------ the docs stay truthful
 
-DOCS = ["README.md", "README.ru.md", "README.kk.md", "docs/demo_script.md"]
+DOCS = ["README.md", "README.en.md", "README.kk.md", "docs/demo_script.md"]
+READMES = ["README.md", "README.en.md", "README.kk.md"]
 
 
 def test_every_documented_flag_is_accepted_by_the_script():
@@ -1201,6 +1299,73 @@ def test_documented_python_snippets_run():
                 f"{doc}: documented snippet failed\n{r.stderr[-600:]}")
             ran += 1
     assert ran >= 3, "expected the rule-trace snippet in each README"
+
+
+def test_quick_start_states_the_key_requirement():
+    """A reviewer with no API key must be able to tell, at a glance, that there
+    is a path that works for them — otherwise they stop at the first command."""
+    checks = {
+        "README.md": ("ключ", "нет"),          # Russian is the primary README
+        "README.en.md": ("api key", "no key"),
+        "README.kk.md": ("кілт", "жоқ"),
+    }
+    for name, (needs, free) in checks.items():
+        text = (ROOT / name).read_text(encoding="utf-8")
+        start = text.lower().find("quick start")
+        if start < 0:
+            start = min(i for i in (text.find("Быстрый старт"),
+                                    text.find("Жылдам бастау")) if i >= 0)
+        section = text[start:start + 2200].lower()
+        assert needs in section, f"{name} quick start does not mention the key"
+        assert free in section, \
+            f"{name} quick start does not say a key-free path exists"
+        assert "[!important]" in section or "!important" in section, \
+            f"{name} does not render the key requirement as a visible callout"
+
+
+def test_internal_anchor_links_resolve():
+    """A broken table-of-contents link in a 750-line README is a real cost to a
+    reviewer working through it."""
+    import unicodedata
+
+    def slug(h):
+        h = re.sub(r"[^\w\- ]", "", h.strip().lower(), flags=re.UNICODE)
+        return h.replace(" ", "-")
+
+    for name in READMES:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        headings = {slug(h) for h in re.findall(r"^#{1,6} +(.+)$", text, re.M)}
+        broken = [l for l in re.findall(r"\]\(#([^)]+)\)", text)
+                  if l not in headings]
+        assert not broken, f"{name} has broken internal links: {broken}"
+
+
+def test_docs_have_no_leftover_placeholders():
+    """A README that still says `<repository-url>` cannot be followed."""
+    for doc in DOCS:
+        text = (ROOT / doc).read_text(encoding="utf-8")
+        for placeholder in ("<repository-url>", "<repo-url>", "TODO", "FIXME",
+                            "XXX", "<your-"):
+            assert placeholder not in text, f"{doc} still contains {placeholder!r}"
+
+
+def test_clone_url_matches_the_actual_remote():
+    """The clone command must point at this repository, not a placeholder or a
+    stale fork."""
+    import subprocess
+
+    try:
+        remote = subprocess.run(["git", "remote", "get-url", "origin"], cwd=ROOT,
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip("git not available")
+    if remote.returncode != 0:
+        pytest.skip("no git remote configured")
+    url = remote.stdout.strip()
+    for doc in READMES:
+        text = (ROOT / doc).read_text(encoding="utf-8")
+        assert "git clone" in text, f"{doc} has no clone command"
+        assert url in text, f"{doc} does not clone from {url}"
 
 
 def test_documented_files_and_make_targets_exist():

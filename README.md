@@ -1,320 +1,330 @@
-# Money Graph
+# Граф денег (Money Graph)
 
-Reconstructing the financial structure of an organized group from a transaction
-network. **Track 2 — Finances.** HackAlem AI case.
+Восстановление финансовой структуры организованной группы по транзакционной сети.
+**Трек 2 — Финансы.** Кейс HackAlem AI.
 
-> Languages: **English** · [Русский](README.ru.md) · [Қазақша](README.kk.md)
+> Языки: **Русский** · [English](README.en.md) · [Қазақша](README.kk.md)
 
 ```bash
 ./agent_run.sh
 ```
 
-One command: install dependencies → compute → verify the exports → report time
-and cost → **open the interface in your browser**.
+Одна команда: установка зависимостей → расчёт → проверка выгрузок → отчёт по
+времени и стоимости → **открытие интерфейса в браузере**.
 
 ---
 
-## Quick start — pick one
+## Быстрый старт — выберите один вариант
 
-### A · Run everything from scratch, with the AI agents
+> [!IMPORTANT]
+> ### 🔑 Нужен ли ключ API?
+>
+> | | Нужен ключ? |
+> |---|---|
+> | **A — запустить всё с нуля, вместе с ИИ-агентами** | ✅ **Да, нужен ключ OpenAI API.** Впишите его в `.env` до запуска. |
+> | **B — просто посмотреть результаты, полученные на хакатоне** | ❌ **Нет.** Ни ключа, ни аккаунта, ни интернета, настраивать нечего. |
+> | **C — пересчитать всё вообще без ИИ** | ❌ **Нет.** Получаются те же три CSV, те же роли и тот же порядок. |
+>
+> Если ключа нет и вы просто хотите увидеть результат работы инструмента,
+> переходите сразу к **варианту B** — он работает сразу.
 
-Put a key in `.env`, then run exactly these two commands:
+### A · Запустить всё с нуля, вместе с ИИ-агентами
+
+Впишите ключ в `.env` и выполните ровно эти две команды:
 
 ```bash
-cp .env.example .env && echo "OPENAI_KEY=sk-REPLACE-ME" >> .env
+cp .env.example .env && echo "OPENAI_KEY=sk-ЗАМЕНИТЕ" >> .env
 ./agent_run.sh
 ```
 
-That installs everything, runs the full agent crew, verifies the three required
-CSVs, prints time and spend, and opens the interface. About 90 seconds and
-~$0.21 on the configured model.
+Скрипт всё установит, запустит полную команду агентов, проверит три
+обязательные выгрузки, напечатает время и стоимость и откроет интерфейс.
+Около 90 секунд и примерно $0.21 на текущей модели.
 
-### B · Just look at the results produced during the hackathon
+### B · Просто посмотреть результаты, полученные на хакатоне
 
-No key, no model calls, nothing to configure — the committed results are opened
-as they are:
+Ключ не нужен, обращений к модели нет, настраивать нечего — открываются
+закоммиченные результаты как есть:
 
 ```bash
 ./agent_run.sh --use-existing
 ```
 
-### C · Recompute everything with no AI at all
+### C · Пересчитать всё вообще без ИИ
 
-Same three CSVs, same roles, same ranks — only the prose is templated instead
-of narrated:
+Те же три CSV, те же роли и тот же порядок — меняются только формулировки:
 
 ```bash
 ./agent_run.sh --offline
 ```
 
-### Which interface?
+### Какой интерфейс?
 
-**The standalone frontend is the default.** It is a static page served locally,
-opens in your browser automatically, and needs no internet.
-
-```bash
-./agent_run.sh                   # standalone frontend (default)
-./agent_run.sh --ui gradio       # Gradio, which can publish a public share link
-./agent_run.sh --ui none         # no interface, just the exports
-./agent_run.sh --no-browser      # do not open a browser
-```
-
-Both interfaces read the same exported files, so they always show the same
-numbers. Both open in **English** by default, with Русский and Қазақша one
-click away.
-
-> **Demo walkthrough:** [`docs/demo_script.md`](docs/demo_script.md) — a timed
-> five-minute script with the actual account numbers.
-
-## Contents
-
-1. [What it does and who it is for](#1-what-it-does-and-who-it-is-for) *(описание решения и его назначения)*
-2. [Architecture](#2-architecture) *(описание архитектуры)*
-3. [Technologies used](#3-technologies-used) *(используемые технологии)*
-4. [Installation](#4-installation) *(инструкции по установке)*
-5. [Running it](#5-running-it) *(инструкции по запуску)*
-6. [Dependencies](#6-dependencies) *(необходимые зависимости)*
-7. [Environment parameters](#7-environment-parameters) *(параметры окружения)*
-8. [Verifying the main scenario](#8-verifying-the-main-scenario) *(порядок проверки основного сценария работы)*
-9. [Role criteria](#9-role-criteria)
-10. [Priority score](#10-priority-score)
-11. [Clustering](#11-clustering)
-12. [Data limitations and how each is handled](#12-data-limitations-and-how-each-is-handled)
-13. [Output schemas](#13-output-schemas)
-14. [Reproducibility](#14-reproducibility)
-15. [Wording and privacy](#15-wording-and-privacy)
-16. [Limitations of the approach](#16-limitations-of-the-approach)
-17. [Scaling to ~1M nodes](#17-scaling-to-1m-nodes)
-18. [Repository layout](#18-repository-layout)
-
----
-
-## 1. What it does and who it is for
-
-### The problem
-
-Law enforcement hands an AML analyst at a second-tier bank a list of customers
-who received money from drug trafficking — the **bottom of the chain**. Who sits
-above them, who collects the money, through whom it moves and who ultimately
-controls it, has to be reconstructed by hand, hours per node.
-
-### What the solution does
-
-**In:** an export of **outgoing** transfers from 81 known customers across
-4 hops (July 2026, intra-bank, transfers ≥ 5,000 KZT) — 2,248 nodes, 3,119 edges,
-4,840 transactions.
-
-**Out:** an answer to one question — **which of the 2,248 customers to review
-first, and why.** Specifically:
-
-* every node gets a **role** from the dictionary, a **confidence** (0–1), a
-  **cluster** and a **review priority** (0–1);
-* every role carries **evidence with numbers** — the exact figures the rule
-  compared;
-* three CSV exports with a fixed schema;
-* a **web interface** where typing an account number shows its role, the rule
-  that produced it and a map of the money around it, in seconds.
-
-### Who uses it
-
-A financial-monitoring analyst. The scenario: receive a list of gids → load the
-export → open the priority list → read the reason for each entry → assemble the
-accounts for in-depth review and the request to law enforcement.
-
-### The defining property
-
-**This is not a black box.** Every role is the result of a formal rule with a
-threshold, and that rule is shown in the interface together with the numbers it
-compared. AI agents are involved, but they **do not assign roles** (see §2).
-
----
-
-## 2. Architecture
-
-### The governing principle
-
-> **Agents run the investigation. The rule engine is the adjudicator.**
-
-Agents decide *what to examine, how deep to go, and what the thresholds should
-be*. `roles.py` decides *what the role is*, by comparing a metric to a
-threshold, and emits a `RuleTrace` holding the rule that fired, the values it
-used and the thresholds it compared against. The brief's requirement — "a role
-without an explainable rule does not count" — is satisfied by construction.
-
-### The pipeline
-
-```
-ingest → data profiling
-       → [PLANNER: which passes this dataset needs]
-       → graph → features → temporal → attribution
-       → [CALIBRATOR: role thresholds, simulated then persisted]
-       → roles (pass 1) → clustering → roles (pass 2: coordinator)
-       → priority → evidence
-       → [INVESTIGATOR: dossiers] → [CRITIC: the argument against]
-       → [NARRATOR: wording] → [REVIEWER: data requests]
-       → exports
-```
-
-Full diagram: [`docs/diagram.md`](docs/diagram.md).
-
-### The agents and what constrains them
-
-| Agent | What it decides | What constrains it |
-|---|---|---|
-| **planner** | which passes to run on this dataset, and how deep | a hard cap in `config.yaml` it cannot exceed |
-| **calibrator** | **every role threshold**, with a written justification for each | must stay inside a percentile-derived range; the proposal is **simulated against the real data** and rejected if it empties a role or hands one role more than half the network; the result is persisted for reproducibility |
-| **investigator** | what to examine around each priority account (a multi-step tool loop) | every claim must come from a tool result; cited gids must exist; must offer a plausible **innocent** explanation |
-| **critic** | what is **wrong** with the shortlist: collection artifacts, threshold sensitivity, blind spots | may only cite accounts it was shown; cannot demote anything — its output is advisory |
-| **narrator** | wording only | every number in a rewritten sentence must appear in the `RuleTrace`, or the rewrite is discarded |
-| **ingest** | which input column is which | the answer is re-validated against the data before acceptance |
-| **reviewer** | how to phrase the data-request brief | the gaps themselves are computed from the graph |
-| **analyst** | which graph query answers the user's question | answers only from tool output; the call transcript is shown beside the answer |
-
-**None of them assigns a role, a score, a cluster or a rank.** Each has a
-deterministic fallback: `./agent_run.sh --offline` produces the same three CSVs
-with the same roles.
-
-### The wording-validation contract
-
-1. `roles.py` assigns a role and emits a `RuleTrace`.
-2. `evidence.py` fills a template from it — always correct.
-3. The narrator may rewrite the sentence. The rewrite is accepted only if it
-   passes the length cap, the forbidden-word list **and** the number check:
-   every number in the text must be derivable from the `RuleTrace`.
-4. Rejections are counted and reported in `run_trace.md`.
-
-### The audit trail
-
-`output_files/agent_log.md` records each agent's plan, every tool call with its
-arguments and result, every rejected output with its reason, and every fallback.
-In a compliance setting, being unable to show how a conclusion was reached *is*
-the finding — so the log is a deliverable, not a debug artifact.
-
----
-
-## 3. Technologies used
-
-| Layer | Technology | Why |
-|---|---|---|
-| Language | Python 3.10+ (tested on 3.13) | recommended by the organizers |
-| Data | `pandas`, `pyarrow`, `numpy` | parquet/CSV reading, vectorized computation |
-| Graphs | `networkx` 3.7, `scipy` | directed weighted graph, PageRank, betweenness, Louvain, connected components |
-| Configuration | `PyYAML` | every threshold and weight lives outside the code |
-| Interface | **standalone frontend** (HTML/CSS/vanilla JS, vis-network vendored) | the default: no build step, no framework, no network |
-| Interface (alt) | `gradio` 5.50, `pyvis` 0.3.2 | second interface, can publish a public share link |
-| Agents | `openai` (compatible client), `python-dotenv` | the AI layer; **optional at runtime** |
-| Tests | `pytest` | 83 tests: export contract, wording, agents, interface |
-
-**No charting library, deliberately.** The one chart in the interface is drawn
-in CSS: otherwise its rendering depends on a JS bundle version agreeing with
-Gradio's front end.
-
-**Not required:** cloud, GPU, paid services. Internet access is needed only for
-an external LLM API, and only if it is enabled.
-
----
-
-## 4. Installation
-
-### The short path (recommended)
+**По умолчанию — собственный фронтенд.** Это статическая страница, которая
+раздаётся локально, сама открывается в браузере и не требует интернета.
 
 ```bash
-git clone <repository-url>
+./agent_run.sh                   # собственный фронтенд (по умолчанию)
+./agent_run.sh --ui gradio       # Gradio, умеет публиковать общедоступную ссылку
+./agent_run.sh --ui none         # без интерфейса, только выгрузки
+./agent_run.sh --no-browser      # не открывать браузер
+```
+
+Оба интерфейса читают одни и те же выгруженные файлы, поэтому всегда
+показывают одинаковые числа. Оба открываются **по-русски**, переключение на
+English и қазақша — в один клик.
+
+> **Сценарий демонстрации:** [`docs/demo_script.md`](docs/demo_script.md) —
+> пятиминутный сценарий с реальными номерами счетов.
+
+## Содержание
+
+1. [Описание решения и его назначения](#1-описание-решения-и-его-назначения)
+2. [Описание архитектуры](#2-описание-архитектуры)
+3. [Используемые технологии](#3-используемые-технологии)
+4. [Инструкции по установке](#4-инструкции-по-установке)
+5. [Инструкции по запуску](#5-инструкции-по-запуску)
+6. [Необходимые зависимости](#6-необходимые-зависимости)
+7. [Параметры окружения](#7-параметры-окружения)
+8. [Порядок проверки основного сценария работы](#8-порядок-проверки-основного-сценария-работы)
+9. [Критерии ролей](#9-критерии-ролей)
+10. [Приоритет проверки](#10-приоритет-проверки)
+11. [Кластеризация](#11-кластеризация)
+12. [Ограничения данных и как они учтены](#12-ограничения-данных-и-как-они-учтены)
+13. [Схемы выгрузок](#13-схемы-выгрузок)
+14. [Воспроизводимость](#14-воспроизводимость)
+15. [Формулировки и приватность](#15-формулировки-и-приватность)
+16. [Ограничения подхода](#16-ограничения-подхода)
+17. [Масштабирование до ~1 млн узлов](#17-масштабирование-до-1-млн-узлов)
+18. [Структура репозитория](#18-структура-репозитория)
+
+---
+
+## 1. Описание решения и его назначения
+
+### Задача
+
+Аналитику AML банка второго уровня правоохранительные органы передают список
+клиентов, получавших деньги от наркоторговли, — **нижний уровень цепочки**. Кто
+стоит выше: кто собирает эти деньги, через кого их перемещают и кто в итоге ими
+управляет — восстанавливается вручную, часами на один узел.
+
+### Что делает решение
+
+На входе — выгрузка **исходящих** переводов 81 известного клиента на глубину
+4 колена (июль 2026, внутрибанковские переводы от 5 000 ₸): 2 248 узлов,
+3 119 рёбер, 4 840 транзакций.
+
+На выходе — ответ на один вопрос: **кого из 2 248 клиентов проверять первым и
+почему**. Конкретно:
+
+* каждому узлу присвоена **роль** из словаря, **уверенность в роли** (0–1),
+  **кластер** и **приоритет проверки** (0–1);
+* к каждой роли приложено **обоснование с числами** — теми самыми, которые
+  сравнивало правило;
+* три CSV-выгрузки фиксированной схемы;
+* **веб-интерфейс**, где по номеру счёта за секунды видно роль, сработавшее
+  правило и карту движения денег.
+
+### Для кого
+
+Аналитик финансового мониторинга. Сценарий: получить список gid → загрузить
+выгрузку → открыть список приоритетов → прочитать обоснование по каждой позиции
+→ сформировать перечень клиентов на углублённую проверку и запрос в
+правоохранительные органы.
+
+### Ключевое свойство
+
+**Решение не является «чёрным ящиком».** Каждая роль — результат формального
+правила с порогом, и это правило показывается в интерфейсе вместе с числами,
+которые оно сравнивало. ИИ-агенты участвуют, но **не присваивают роли**
+(см. раздел 2).
+
+---
+
+## 2. Описание архитектуры
+
+### Главный принцип
+
+> **Агенты ведут исследование. Движок правил выносит решение.**
+
+Агенты решают, *что изучать, насколько глубоко и какими должны быть пороги*.
+Модуль `roles.py` определяет, *какая роль*, сравнивая метрику с порогом, и
+формирует `RuleTrace` — структуру с сработавшим правилом, использованными
+значениями и порогами. Требование ТЗ «роль без объяснимого правила не
+засчитывается» выполняется по построению.
+
+### Конвейер
+
+```
+загрузка → профилирование данных
+        → [ПЛАНИРОВЩИК: какие проходы нужны на этих данных]
+        → граф → признаки → временные признаки → атрибуция
+        → [КАЛИБРОВЩИК: пороги ролей, с симуляцией и сохранением]
+        → роли (проход 1) → кластеризация → роли (проход 2: координатор)
+        → приоритет → обоснования
+        → [СЛЕДОВАТЕЛЬ: досье] → [КРИТИК: аргументы против]
+        → [РЕДАКТОР: формулировки] → [РЕВИЗОР: запросы данных]
+        → выгрузки
+```
+
+Полная схема: [`docs/diagram.md`](docs/diagram.md).
+
+### Агенты и их полномочия
+
+| Агент | Что решает | Что его ограничивает |
+|---|---|---|
+| **планировщик** | какие проходы запускать на этих данных и насколько глубоко | жёсткий лимит в `config.yaml`, который он не может превысить |
+| **калибровщик** | **все пороги ролей**, с письменным обоснованием каждого | обязан остаться в диапазоне, выведенном из перцентилей; предложение **симулируется на реальных данных** и отклоняется, если обнуляет роль или отдаёт одной роли больше половины сети; результат сохраняется для воспроизводимости |
+| **следователь** | что изучать вокруг каждого приоритетного счёта (многошаговый цикл вызова функций) | каждое утверждение обязано исходить из результата функции; упомянутые gid должны существовать; обязан предложить правдоподобное **безобидное** объяснение |
+| **критик** | что **не так** с итоговым списком: артефакты сбора, чувствительность порогов, слепые зоны | может ссылаться только на показанные ему счета; не может ничего понизить — вывод носит рекомендательный характер |
+| **редактор** | только формулировки | каждое число в переписанной фразе обязано присутствовать в `RuleTrace`, иначе результат отбрасывается |
+| **загрузчик** | какая колонка входного файла чему соответствует | ответ перепроверяется по самим данным до принятия |
+| **ревизор** | как сформулировать запросы недостающих данных | сами пробелы вычисляются из графа |
+| **аналитик** | какой запрос к графу отвечает на вопрос пользователя | отвечает только из вывода функций; протокол вызовов показывается рядом с ответом |
+
+**Ни один из них не присваивает роль, оценку, кластер или место в списке.** У
+каждого есть детерминированный запасной путь: `./agent_run.sh --offline`
+формирует те же три CSV с теми же ролями.
+
+### Механизм проверки формулировок
+
+1. `roles.py` присваивает роль и формирует `RuleTrace`.
+2. `evidence.py` заполняет шаблон из этой структуры — всегда корректно.
+3. Редактор может переписать фразу. Переписанное принимается, только если
+   проходит ограничение длины, список запрещённых слов **и** проверку чисел:
+   каждое число в тексте обязано выводиться из `RuleTrace`.
+4. Отклонения подсчитываются и попадают в `run_trace.md`.
+
+### Журнал аудита
+
+`output_files/agent_log.md` фиксирует план каждого агента, каждый вызов функции
+с аргументами и результатом, каждое отклонённое решение с причиной и каждый
+переход на запасной путь. В задачах комплаенса невозможность показать, как
+получен вывод, сама по себе является проблемой, поэтому журнал — часть
+результата, а не отладочный файл.
+
+---
+
+## 3. Используемые технологии
+
+| Слой | Технологии | Зачем |
+|---|---|---|
+| Язык | Python 3.10+ (проверено на 3.13) | рекомендован организаторами |
+| Данные | `pandas`, `pyarrow`, `numpy` | чтение parquet/CSV, векторные расчёты |
+| Графы | `networkx` 3.7, `scipy` | направленный взвешенный граф, PageRank, betweenness, Louvain, компоненты связности |
+| Конфигурация | `PyYAML` | все пороги и веса вне кода |
+| Интерфейс | **собственный фронтенд** (HTML/CSS/чистый JS, vis-network вендорится локально) | по умолчанию: без сборки, без фреймворка, без сети |
+| Интерфейс (альт.) | `gradio` 5.50, `pyvis` 0.3.2 | второй интерфейс, умеет публиковать общедоступную ссылку |
+| Агенты | `openai` (совместимый клиент), `python-dotenv` | ИИ-слой; **опционален во время выполнения** |
+| Тесты | `pytest` | 83 теста: контракт выгрузок, формулировки, агенты, интерфейс |
+
+**Намеренно не используется библиотека построения графиков.** Единственная
+диаграмма в интерфейсе нарисована на CSS: иначе её отображение зависит от
+совпадения версий JS-пакета и фронтенда Gradio.
+
+**Не требуется:** облако, GPU, платные сервисы. Интернет нужен только для
+внешнего LLM API, и только если он включён.
+
+---
+
+## 4. Инструкции по установке
+
+### Быстрый путь (рекомендуется)
+
+```bash
+git clone https://github.com/BAITC-Hacks/hack-e26f0e66-max.git
 cd hack-e26f0e66-max
 ./agent_run.sh
 ```
 
-The script finds a Python 3.10+, creates `.venv`, installs from
-`requirements.txt`, creates `.env` from the template and continues. No separate
-installation step is needed. If `.venv` exists but its interpreter does not run
-— a half-finished creation, a copied working tree, an upgraded system Python —
-it is detected and rebuilt.
+Скрипт сам найдёт Python 3.10+, создаст `.venv`, установит зависимости из
+`requirements.txt`, создаст `.env` из шаблона и продолжит расчёт. Отдельная
+установка не нужна.
 
-### The manual path
+### Ручной путь
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env               # the key may stay empty
+cp .env.example .env               # ключ можно не заполнять
 ```
 
-### Verifying the installation
+### Проверка установки
 
 ```bash
-.venv/bin/python -m pytest -q      # expected: 83 passed
+.venv/bin/python -m pytest -q      # ожидается: 83 passed
 ```
 
-Machine requirements: an ordinary laptop. The computation takes **under 2
-seconds** without the AI layer and roughly 30–90 seconds with it, against the
-brief's 5-minute limit.
+Требования к машине: обычный ноутбук. Расчёт занимает **менее 2 секунд** без
+ИИ-слоя и около 30–90 секунд с ним, при лимите ТЗ в 5 минут.
 
 ---
 
-## 5. Running it
+## 5. Инструкции по запуску
 
-### One command
+### Одна команда
 
 ```bash
 ./agent_run.sh
 ```
 
-Six steps: environment → dependencies → model check → computation → export
-verification → web interface with a public link.
+Выполняет шесть шагов: окружение → зависимости → проверка модели → расчёт →
+проверка выгрузок → веб-интерфейс с публичной ссылкой.
 
-### Modes
+### Режимы
 
 ```bash
-./agent_run.sh                 # full run with the AI layer (needs .env)
-./agent_run.sh --ui gradio     # use Gradio instead of the standalone frontend
-./agent_run.sh --no-browser    # do not open a browser
-./agent_run.sh --offline       # no model calls at all; exports are identical
-./agent_run.sh --use-existing  # skip the computation, open the viewer on the last result
-./agent_run.sh --data ./my_export   # your own files instead of data/
-./agent_run.sh --recalibrate   # re-run the calibrator agent
-./agent_run.sh --no-app        # stop after the exports are verified
-./agent_run.sh --no-share      # viewer on localhost only
+./agent_run.sh                 # полный запуск с ИИ-слоем (нужен .env)
+./agent_run.sh --offline       # без обращений к модели; выгрузки идентичны
+./agent_run.sh --use-existing  # пропустить расчёт, открыть интерфейс на прошлом результате
+./agent_run.sh --data ./my_export   # свои файлы вместо data/
+./agent_run.sh --recalibrate   # перезапустить агента-калибровщика
+./agent_run.sh --no-app        # остановиться после проверки выгрузок
+./agent_run.sh --no-share      # интерфейс только на localhost
 ./agent_run.sh --port 7861
 ```
 
-Exit codes: `0` success, `1` computation failed, `2` exports missing or
-malformed, `3` environment problem. Suitable for CI.
+Коды возврата: `0` — успех, `1` — сбой расчёта, `2` — выгрузки отсутствуют или
+не соответствуют схеме, `3` — проблема окружения. Пригодно для CI.
 
-### The pieces
+### По частям
 
 ```bash
-.venv/bin/python run.py                  # computation only: data/ → output_files/
-.venv/bin/python run.py --only-profile   # data profile report only
-.venv/bin/python app/app.py --share      # interface only
+.venv/bin/python run.py                  # только расчёт: data/ → output_files/
+.venv/bin/python run.py --only-profile   # только отчёт по данным
+.venv/bin/python app/app.py --share      # только интерфейс
 make run | make offline | make existing | make test
 ```
 
-### What appears in `output_files/`
+### Что создаётся в `output_files/`
 
-| File | Contents |
+| Файл | Содержимое |
 |---|---|
-| `nodes_roles.csv` | **required.** One row per account: `gid, role, role_score, cluster_id, priority_score, evidence` |
-| `clusters.csv` | **required.** One row per cluster: size, seed count, internal turnover, top gids, hypothesis |
-| `top_nodes.csv` | **required.** 30 accounts by descending priority, with a written reason |
-| `node_features.parquet` | every metric plus each node's `rule_trace` — this is what the viewer reads |
-| `graph_edges.parquet` | the edges, so the viewer never touches `data/` |
-| `profile_report.md` | data profile: every announced fact checked, all percentiles |
-| `agent_log.md` | the AI agents' audit trail |
-| `review_notes.md` | the critic's argument against the shortlist |
-| `data_requests.md` | what is missing and what to request next |
-| `dossiers.json` | the investigator's dossiers on the priority accounts |
-| `ingest_report.json` | which file was read as what, and how each column was matched |
-| `extras_report.md` / `extras.json` | optional analyses: return flows, recurring routes, resilience, anomaly flags |
-| `web_data.json` | everything the standalone frontend reads, in all three languages |
-| `run_trace.md` / `.json` | per-stage timing, tokens, spend |
+| `nodes_roles.csv` | **обязательно.** Строка на каждый из 2 248 счетов: `gid, role, role_score, cluster_id, priority_score, evidence` |
+| `clusters.csv` | **обязательно.** Строка на кластер: размер, число seed, внутренний оборот, топ-gid, гипотеза |
+| `top_nodes.csv` | **обязательно.** 30 счетов по убыванию приоритета с текстовым обоснованием |
+| `node_features.parquet` | все метрики и `rule_trace` каждого узла — это читает интерфейс |
+| `graph_edges.parquet` | рёбра, чтобы интерфейс никогда не обращался к `data/` |
+| `profile_report.md` | профиль данных: все заявленные факты проверены, перцентили |
+| `agent_log.md` | журнал аудита ИИ-агентов |
+| `review_notes.md` | аргументы критика против итогового списка |
+| `data_requests.md` | чего не хватает и что запрашивать дальше |
+| `dossiers.json` | досье следователя по приоритетным счетам |
+| `ingest_report.json` | какой файл чем прочитан и какие колонки как распознаны |
+| `extras_report.md` / `extras.json` | опциональные анализы: возвратные потоки, повторяющиеся маршруты, устойчивость, флаги аномалий |
+| `web_data.json` | всё, что читает собственный фронтенд, на трёх языках |
+| `run_trace.md` / `.json` | время по этапам, токены, стоимость |
 
 ---
 
-## 6. Dependencies
+## 6. Необходимые зависимости
 
-The full pinned list is [`requirements.txt`](requirements.txt). The set was
-**resolved and installed**, not hand-written: `gradio` caps `pandas` below 3.0,
-so the whole stack sits on the `pandas` 2.x line.
+Полный список с закреплёнными версиями — [`requirements.txt`](requirements.txt).
+Набор разрешён установщиком и проверен, а не выписан вручную: `gradio`
+ограничивает `pandas` версиями ниже 3.0, поэтому весь стек стоит на линии
+`pandas` 2.x.
 
 ```
 pandas==2.3.3          pyarrow==25.0.1     numpy==2.5.3
@@ -324,15 +334,14 @@ openai==3.19.0         python-dotenv==1.2.3
 pytest==9.1.1
 ```
 
-Notes:
+Замечания:
 
-* `scipy` is required: `networkx` delegates weighted PageRank to it.
-* `gradio` is held below 6.0: `app/app.py` targets the 5.x API.
-* `openai` and `python-dotenv` are only for the AI layer. Without them the
-  computation and the interface work fully and the agents take their
-  deterministic path.
+* `scipy` обязателен: `networkx` передаёт ему расчёт взвешенного PageRank.
+* `gradio` закреплён ниже 6.0: `app/app.py` написан под API 5.x.
+* `openai` и `python-dotenv` нужны только для ИИ-слоя. Без них расчёт и
+  интерфейс работают полностью, агенты переходят на детерминированный путь.
 
-Before changing any pin, re-resolve the set:
+Перед изменением любой версии следует перепроверить набор:
 
 ```bash
 pip install --dry-run -r requirements.txt
@@ -340,12 +349,12 @@ pip install --dry-run -r requirements.txt
 
 ---
 
-## 7. Environment parameters
+## 7. Параметры окружения
 
-### The `.env` file
+### Файл `.env`
 
-Created automatically from [`.env.example`](.env.example) and never committed.
-Three supported setups.
+Создаётся автоматически из [`.env.example`](.env.example) и не попадает в
+репозиторий. Поддерживаются три варианта.
 
 **1. OpenAI**
 
@@ -353,105 +362,107 @@ Three supported setups.
 OPENAI_KEY=sk-...
 ```
 
-**2. A self-hosted or third-party OpenAI-compatible server** — vLLM, Ollama,
-llama.cpp, TGI, LM Studio, OpenRouter, Together, an internal gateway:
+**2. Свой или сторонний OpenAI-совместимый сервер** — vLLM, Ollama,
+llama.cpp, TGI, LM Studio, OpenRouter, Together, внутренний шлюз:
 
 ```bash
 MONEYGRAPH_BASE_URL=http://localhost:8000/v1
 MONEYGRAPH_MODEL=Qwen/Qwen3-32B-Instruct
-MONEYGRAPH_API_KEY=local        # many local servers ignore the key
+MONEYGRAPH_API_KEY=local        # многие локальные серверы ключ игнорируют
 ```
 
-Also set `llm.api: chat` in `config.yaml`, and clear `llm.reasoning_effort`
-unless your server accepts it. Add the model's rates under `llm.pricing` — for a
-local model set them to `0` and the report honestly shows `$0.00` rather than
-"unpriced".
+Дополнительно в `config.yaml`: `llm.api: chat` и пустой
+`llm.reasoning_effort`, если сервер не принимает этот параметр. Тарифы модели
+стоит добавить в `llm.pricing` — для локальной модели поставить `0`, и отчёт
+честно покажет `$0.00` вместо «не тарифицировано».
 
-**3. No model at all**
+**3. Без модели вообще**
 
 ```bash
 MONEYGRAPH_NO_LLM=1
 ```
 
-or `./agent_run.sh --offline`. The brief's requirement — reproducible without
-paid services — is met.
+Либо `./agent_run.sh --offline`. Требование ТЗ «воспроизведение без платных
+сервисов» выполняется.
 
-### Environment variables
+### Переменные окружения
 
-| Variable | Purpose | Default |
+| Переменная | Назначение | По умолчанию |
 |---|---|---|
-| `OPENAI_KEY` / `OPENAI_API_KEY` / `MONEYGRAPH_API_KEY` | API key; the first non-empty one wins | — |
-| `MONEYGRAPH_BASE_URL` | address of an OpenAI-compatible server | OpenAI's API |
-| `MONEYGRAPH_MODEL` | model name, overrides `config.yaml` | `gpt-6-sol` |
-| `MONEYGRAPH_NO_LLM` | `1` — fully deterministic run | unset |
-| `MONEYGRAPH_SHARE` | `1` — public interface link | `0` |
-| `MONEYGRAPH_HOST` / `MONEYGRAPH_PORT` | interface address and port | `127.0.0.1:7860` |
+| `OPENAI_KEY` / `OPENAI_API_KEY` / `MONEYGRAPH_API_KEY` | ключ API; берётся первый непустой | — |
+| `MONEYGRAPH_BASE_URL` | адрес OpenAI-совместимого сервера | API OpenAI |
+| `MONEYGRAPH_MODEL` | имя модели, переопределяет `config.yaml` | `gpt-6-sol` |
+| `MONEYGRAPH_NO_LLM` | `1` — полностью детерминированный запуск | не задана |
+| `MONEYGRAPH_SHARE` | `1` — публичная ссылка интерфейса | `0` |
+| `MONEYGRAPH_HOST` / `MONEYGRAPH_PORT` | адрес и порт интерфейса | `127.0.0.1:7860` |
 
-### `config.yaml`
+### Файл `config.yaml`
 
-Every threshold, weight, budget and rate, each with a comment on where it came
-from. Key sections: `roles` (role thresholds), `priority` (score weights),
-`clustering`, `llm` (model, budgets, pricing), `agents` (per-agent switches),
-`tracing` (latency budget), `viewer`, `input` (column aliases).
+Все пороги, веса, лимиты и тарифы, каждый с комментарием о происхождении.
+Ключевые разделы: `roles` (пороги ролей), `priority` (веса приоритета),
+`clustering`, `llm` (модель, лимиты, тарифы), `agents` (включение каждого
+агента), `tracing` (лимит времени), `viewer`, `input` (синонимы колонок).
 
-Current model: **`gpt-6-sol`**, `reasoning_effort: low`. A full run with the AI
-layer is about 53 calls and 76,000 tokens, roughly **$0.21**.
-`llm.budget.max_usd` is a **per-run** ceiling of $2.00 — about 10× headroom.
-`gpt-6-luna` and `gpt-6-astra` are priced too, so switching is one line.
+Текущая модель: **`gpt-6-sol`**, `reasoning_effort: low`. Полный запуск с
+ИИ-слоем — около 53 вызовов и 76 000 токенов, примерно **$0.21**. Лимит
+`llm.budget.max_usd` действует **на один запуск** и равен $2.00, то есть
+запас десятикратный. Тарифы `gpt-6-luna` и `gpt-6-astra` также прописаны —
+смена модели занимает одну строку.
 
-### `config.calibrated.yaml`
+### Файл `config.calibrated.yaml`
 
-The thresholds the calibrator agent chose, with a justification for each.
-**Committed deliberately:** it makes a run on a reviewer's machine reproduce
-exactly the numbers chosen here. Re-run the agent with
+Пороги, выбранные агентом-калибровщиком, с обоснованием каждого. **Файл
+коммитится намеренно:** благодаря ему запуск на машине проверяющего
+воспроизводит ровно те числа, что были выбраны здесь. Перезапуск агента —
 `./agent_run.sh --recalibrate`.
 
 ---
 
-## 8. Verifying the main scenario
+## 8. Порядок проверки основного сценария работы
 
-A sequence that can be followed end to end without reading the code.
+Ниже — последовательность, которую можно выполнить целиком, не заглядывая в код.
 
-### Step 1. Deploy and run
+### Шаг 1. Развернуть и запустить
 
 ```bash
-git clone <repository-url> && cd hack-e26f0e66-max
+git clone https://github.com/BAITC-Hacks/hack-e26f0e66-max.git
+cd hack-e26f0e66-max
 ./agent_run.sh --offline --no-app
 ```
 
-`--offline` is deliberate: it needs no key, costs nothing, and exercises exactly
-the deterministic core.
+Режим `--offline` выбран намеренно: он не требует ключа, ничего не стоит и
+проверяет именно детерминированное ядро.
 
-**Expected:**
+**Ожидается:**
 
 ```
-[1/5] Python environment      ✓
-[2/5] Dependencies            ✓
-[3/5] Agent layer             ! offline mode
-[4/5] Pipeline                ✓ pipeline finished in 2s
-[5/5] Deliverables
+[1/6] Python environment      ✓
+[2/6] Dependencies            ✓
+[3/6] Agent layer             ! offline mode
+[4/6] Pipeline                ✓ pipeline finished in 2s
+[5/6] Deliverables
   nodes_roles.csv   2248  ok
   clusters.csv        88  ok
   top_nodes.csv       30  ok
   ✓ all three required CSVs are present and valid in output_files/
 ```
 
-### Step 2. Check the required exports
+### Шаг 2. Проверить обязательные выгрузки
 
 ```bash
-wc -l output_files/nodes_roles.csv          # 2249 (2248 rows + header)
+wc -l output_files/nodes_roles.csv          # 2249 (2248 строк + заголовок)
 head -2 output_files/nodes_roles.csv        # gid,role,role_score,cluster_id,priority_score,evidence,...
 head -4 output_files/top_nodes.csv          # rank,gid,role,priority_score,why
 ```
 
-The schema is checked automatically in step 5 of the script: files present,
-required column order, no nulls, unique gids, at least 20 rows in
-`top_nodes.csv`.
+Схема проверяется автоматически на шаге 5 скрипта: наличие файлов, порядок
+обязательных колонок, отсутствие пустых значений, уникальность gid, не менее
+20 строк в `top_nodes.csv`.
 
-### Step 3. Check explainability (must-have 3 of the brief)
+### Шаг 3. Проверить объяснимость (must-have 3 из ТЗ)
 
-The scenario is "the jury names three arbitrary gids, the team explains each
-role within a minute". From the terminal:
+Сценарий «жюри называет три произвольных gid — команда за минуту объясняет
+роль». Из терминала:
 
 ```bash
 .venv/bin/python - <<'PY'
@@ -459,384 +470,387 @@ import json, pandas as pd
 f = pd.read_parquet("output_files/node_features.parquet").set_index("gid", drop=False)
 for gid in pd.read_csv("output_files/top_nodes.csv").gid[:3]:
     tr = json.loads(f.at[gid, "rule_trace"])
-    print(f"\ngid {gid}  ->  {tr['role']}")
-    print(f"  rule:       {tr['gate']}")
-    print(f"  values:     {tr['metrics']}")
-    print(f"  thresholds: {tr['thresholds']}")
+    print(f"\ngid {gid}  →  {tr['role']}")
+    print(f"  правило: {tr['gate']}")
+    print(f"  значения: {tr['metrics']}")
+    print(f"  пороги:   {tr['thresholds']}")
 PY
 ```
 
-Every node returns the rule that fired, the values it compared and the
-thresholds. The same thing is shown in the interface on the **Account detail**
-tab.
+Каждый узел возвращает сработавшее правило, сравнённые значения и пороги. То же
+самое показывается в интерфейсе на вкладке «Карточка счёта».
 
-### Step 4. Check reproducibility
+### Шаг 4. Проверить воспроизводимость
 
 ```bash
 .venv/bin/python -m pytest -q -m slow
 ```
 
-One test runs the computation twice and compares CSV hashes — they must match.
-Another confirms the exports are produced with no access to a model.
+Тест запускает расчёт дважды и сравнивает хеши CSV — они обязаны совпасть.
+Второй тест подтверждает, что выгрузки формируются без доступа к модели.
 
-### Step 5. Open the interface
+### Шаг 5. Открыть интерфейс
 
 ```bash
 ./agent_run.sh --use-existing
 ```
 
-It opens at `http://127.0.0.1:7860` and prints a public link. The default
-language is English; Русский and Қазақша are one click away, top right.
+Интерфейс откроется на `http://127.0.0.1:7860` и выдаст публичную ссылку.
+Стартовый язык — русский; English и қазақша — справа вверху. При выборе
+қазақша показывается предупреждение о машинном переводе.
 
-**The first tab, "About",** explains the other eight and contains a three-step
-demo path.
+**Первая вкладка «О решении»** объясняет остальные восемь и содержит порядок
+демонстрации из трёх шагов.
 
-Verifying the main scenario in the interface:
+Проверка основного сценария в интерфейсе:
 
-1. **Who to review first** — 30 accounts sorted by priority, each with a reason.
-   Clicking a row opens that account's card below.
-2. **Account detail** — type any gid (for example from `top_nodes.csv`). You
-   should see the role, the rule that fired with its numbers, a link map with
-   arrows showing the direction of money, and tables of payers and recipients.
-3. **How it decided** — the thresholds the agent chose with its reasoning, the
-   dossiers, the critic's argument against the result, and the full agent log.
-4. **Cost & timing** — per-stage timing against the 300-second limit.
+1. **«Кого проверять первым»** — список из 30 счетов, отсортированный по
+   приоритету, с колонкой обоснования. Клик по строке раскрывает карточку.
+2. **«Карточка счёта»** — ввести любой gid (например, из `top_nodes.csv`).
+   Должны появиться: роль, сработавшее правило с числами, карта связей со
+   стрелками направления денег, таблицы плательщиков и получателей.
+3. **«Как принято решение»** — пороги, выбранные агентом, с обоснованиями;
+   досье; аргументы критика против результата; полный журнал агентов.
+4. **«Время и стоимость»** — время по этапам против лимита в 300 секунд.
 
-### Step 6 (optional). Check the AI layer
+### Шаг 6 (необязательно). Проверить ИИ-слой
 
 ```bash
-cp .env.example .env && $EDITOR .env      # set OPENAI_KEY
+cp .env.example .env && $EDITOR .env      # вписать OPENAI_KEY
 ./agent_run.sh
 ```
 
-The output shows the planner, calibrator, investigator (running concurrently),
-critic and reviewer, and the token and cost totals.
+В выводе видны действия планировщика, калибровщика, следователя (параллельно),
+критика и ревизора, а также итог по токенам и стоимости.
 
-### Step 7 (optional). Check it on other data
+### Шаг 7 (необязательно). Проверить работу на других данных
 
 ```bash
-./agent_run.sh --data /path/to/your/export
+./agent_run.sh --data /путь/к/своей/выгрузке
 ```
 
-`.parquet`, `.csv`, `.tsv`, `.json`, `.jsonl` and `.xlsx` are read. The column
-mapping is visible on the **Your data** tab and in `ingest_report.json`.
+Читаются `.parquet`, `.csv`, `.tsv`, `.json`, `.jsonl`, `.xlsx`. Результат
+разбора колонок виден на вкладке «Ваши данные» и в `ingest_report.json`.
 
 ---
 
-## 9. Role criteria
+## 9. Критерии ролей
 
-Every threshold is in `config.yaml` with the distribution it came from.
-`MAX_DEPTH` is read from the data, never hardcoded.
+Все пороги — в `config.yaml` с указанием распределения, из которого они
+получены. `MAX_DEPTH` читается из данных, а не задан константой.
 
-| Role | Rule | Threshold | Rationale |
+| Роль | Правило | Порог | Обоснование |
 |---|---|---|---|
-| `consolidator` | `in_deg >= min_payers` | 5 | p95 = 3, p99 = 6. A cut at 5 selects 51 nodes (2.3%) — "an unusual number of distinct payers", not "more than one". Allowed at any hop: collection is visible from the inflow side alone. |
-| `distributor` | `out_deg >= min_recipients` **and** `out_deg >= fan_ratio × max(in_deg,1)` | 10, ×3 | p95 = 5, p99 = 24. A cut at 10 gives 64 nodes; the ratio term drops it to 56 and stops a node that also collects heavily being filed as a distributor. |
-| `transit` | both flow sides observed, `pass_ratio ∈ [0.8, 1.2]`, `in_deg < 5`, `out_deg < 10` | 0.8–1.2 | 70 nodes in the band (72 counting seeds, which are excluded). Confidence rises when ≥ 50% of the amount moves within 2 days. |
-| `terminal` | outflow traced, `in_sum > 0`, `out_sum <= max_pass × in_sum` | 0.1 | **never assigned at MAX_DEPTH.** Broad by the nature of the data, hence a low weight in the priority score. |
-| `coordinator` | passes the consolidator gate **and** `n_key_payers >= 2` **and** `seed_reach >= p90` | 2, p90 | a collection point that collects **from other collection points**. All three conditions are needed (below). **10 accounts, 0.4%.** |
-| `cutoff` | `depth == MAX_DEPTH` and no rule fired | — | a documented extension of the dictionary, switched by `use_extended_roles`. Fixed confidence 0.7. |
-| `peripheral` | nothing fired | — | includes the 19 isolated seeds. Confidence expresses certainty that nothing is happening: 0.9 with ≤ 1 edge, 0.6 with several. |
+| `consolidator` (точка сбора) | `in_deg >= min_payers` | 5 | p95 = 3, p99 = 6. Порог 5 отбирает 51 узел (2,3 %) — «необычно много разных плательщиков», а не «больше одного». Допустима на любом колене: сбор виден со стороны входа. |
+| `distributor` (распределитель) | `out_deg >= min_recipients` **и** `out_deg >= fan_ratio × max(in_deg,1)` | 10, ×3 | p95 = 5, p99 = 24. Порог 10 даёт 64 узла; множитель снижает до 56 и не даёт записать в распределители узел, который одновременно много собирает. |
+| `transit` (транзит) | обе стороны потока наблюдаемы, `pass_ratio ∈ [0.8, 1.2]`, `in_deg < 5`, `out_deg < 10` | 0.8–1.2 | в полосе 70 узлов (72 с учётом seed, которые исключены). Уверенность повышается, если ≥ 50 % суммы уходит в течение 2 дней. |
+| `terminal` (конечный получатель) | исходящие прослежены, `in_sum > 0`, `out_sum <= max_pass × in_sum` | 0.1 | **никогда не присваивается на MAX_DEPTH.** Роль широкая по природе данных, поэтому имеет низкий вес в приоритете. |
+| `coordinator` (координатор) | проходит ворота consolidator **и** `n_key_payers >= 2` **и** `seed_reach >= p90` | 2, p90 | точка сбора, собирающая **с других точек сбора**. Нужны все три условия (см. ниже). **10 счетов, 0,4 %.** |
+| `cutoff` (обрыв обхода) | `depth == MAX_DEPTH` и ни одно правило не сработало | — | документированное расширение словаря, включается `use_extended_roles`. Фиксированная уверенность 0,7. |
+| `peripheral` (периферия) | ничего не сработало | — | включает 19 изолированных seed. Уверенность выражает уверенность в отсутствии сигнала: 0,9 при ≤ 1 ребре, 0,6 при нескольких. |
 
-**Precedence:** `coordinator > consolidator > distributor > transit > terminal >
-cutoff > peripheral`. Other rules that also fired are kept in `secondary_roles`.
+**Приоритет при совпадении:** `coordinator > consolidator > distributor >
+transit > terminal > cutoff > peripheral`. Остальные сработавшие правила
+сохраняются в `secondary_roles`.
 
-**Confidence (`role_score`):** `0.5 + 0.5 × clip((metric − threshold) /
-(strong − threshold), 0, 1)`, then `×0.8` at MAX_DEPTH (outflow unknown) and
-`×0.8` where the inflow side is unreliable.
+**Уверенность (`role_score`):** `0.5 + 0.5 × clip((метрика − порог) /
+(сильный − порог), 0, 1)`, затем `×0.8` на MAX_DEPTH (исходящие неизвестны) и
+`×0.8`, если сторона входа ненадёжна.
 
-**Seed customers** never receive `transit` or `terminal`: their inflow is
-understated by the export's construction, so the ratio is meaningless. They can
-be `distributor`, `consolidator` or `peripheral`.
+**Seed-клиенты** никогда не получают `transit` и `terminal`: их вход занижен
+устройством выгрузки, соотношение бессмысленно. Могут быть `distributor`,
+`consolidator` или `peripheral`.
 
-### Why coordinator needs all three conditions
+### Почему координатору нужны все три условия
 
-The brief's starting rule (`n_key_payers >= 2 AND seed_reach >= 5`) assigned the
-role to **264 accounts — 11.7% of the graph** — 103 of which were `terminal`,
-i.e. accounts where the money demonstrably stays. The opposite of a controller.
-Two causes:
+Стартовое правило из ТЗ (`n_key_payers >= 2 И seed_reach >= 5`) на этих данных
+присваивало роль **264 счетам — 11,7 % графа**, из них 103 имели роль
+`terminal`, то есть деньги у них заведомо остаются. Это противоположность
+управляющему узлу. Две причины:
 
-1. **`seed_reach >= 5` selects 71% of the graph.** Its range here is p50 = 7,
-   max = 15: the largest component holds 46 seeds feeding almost everything
-   downstream. An absolute threshold on a metric whose range is entirely
-   data-dependent carries no information. It is now a **percentile** (p90),
-   which rescales to any input.
-2. **Being paid by two collectors is not the same as being a collection
-   point.** A coordinator must itself pass the consolidator gate. That one
-   condition drops the count from 264 to 10, and all ten are collection points —
-   which is exactly the definition: *collects from other collectors*.
+1. **`seed_reach >= 5` отбирает 71 % графа.** Диапазон метрики здесь p50 = 7,
+   максимум 15: крупнейшая компонента содержит 46 seed, которые питают почти всё
+   ниже по потоку. Абсолютный порог по метрике, диапазон которой целиком
+   определяется данными, не несёт информации. Теперь это **перцентиль** (p90),
+   который пересчитывается под любые входные данные.
+2. **Получать платежи от двух сборщиков — не то же самое, что быть точкой
+   сбора.** Координатор обязан сам проходить ворота consolidator. Одно это
+   условие снижает счёт с 264 до 10, и все десять — точки сбора, что и
+   соответствует определению: *собирает с других сборщиков*.
 
-The pipeline warns if `coordinator` ever exceeds 2% of the graph.
+Конвейер предупреждает, если `coordinator` превышает 2 % графа.
 
-### Actual distribution on the organizers' data
+### Фактическое распределение на данных организаторов
 
-| Role | Accounts | |
+| Роль | Счетов | |
 |---|---:|---|
-| `terminal` | 1,100 | broad by the nature of the data: most are ordinary leaves that simply had nothing above the 5,000 KZT floor leaving them |
+| `terminal` | 1 100 | широкая по природе данных: большинство — обычные листья, у которых просто не было переводов выше порога 5 000 ₸ |
 | `peripheral` | 540 | |
-| `cutoff` | 444 | **exactly** the announced count of hop-4 nodes with no outgoing transfers |
+| `cutoff` | 444 | **ровно** заявленное число узлов 4-го колена без исходящих |
 | `transit` | 67 | |
 | `distributor` | 46 | |
 | `consolidator` | 41 | |
-| `coordinator` | 10 | the apex role, 0.4% of the graph |
+| `coordinator` | 10 | верхний уровень, 0,4 % графа |
 
-Full computation: **1.6 s** against a 300 s limit.
+Полный расчёт: **1,6 с** при лимите 300 с.
 
 ---
 
-## 10. Priority score
+## 10. Приоритет проверки
 
-A weighted sum of **percentile ranks**, not of raw values: turnover spans four
-orders of magnitude, so ranking before weighting is what makes the weights mean
-what they say.
+Взвешенная сумма **перцентильных рангов**, а не сырых значений: оборот
+охватывает четыре порядка величины, поэтому ранжирование до взвешивания — это
+то, что делает веса осмысленными.
 
-| Component | Weight | Meaning |
+| Компонент | Вес | Смысл |
 |---|---:|---|
-| role weight | 0.30 | coordinator 1.0 · consolidator 0.9 · distributor 0.6 · transit/terminal 0.5 · cutoff 0.3 · peripheral 0.05 |
-| `seed_kzt_attributed` | 0.25 | how much seed money plausibly passed through |
-| `seed_reach` | 0.20 | how many independent chains reach it |
-| `in_deg` | 0.15 | how many distinct payers |
-| cluster seed density | 0.10 | how seed-heavy its neighbourhood is |
+| вес роли | 0.30 | coordinator 1.0 · consolidator 0.9 · distributor 0.6 · transit/terminal 0.5 · cutoff 0.3 · peripheral 0.05 |
+| `seed_kzt_attributed` | 0.25 | сколько денег от seed правдоподобно прошло через узел |
+| `seed_reach` | 0.20 | сколько независимых цепочек до него дотягиваются |
+| `in_deg` | 0.15 | сколько разных плательщиков |
+| плотность seed в кластере | 0.10 | насколько насыщено окружение |
 
-Two documented adjustments:
+Две документированные поправки:
 
-* **Known seeds × 0.5.** Law enforcement already has those 81; the value is in
-  what sits above them, so being a seed lowers priority.
-* **Frontier collectors × 1.1** (capped at 1.0). A `consolidator` or
-  `coordinator` at MAX_DEPTH is the most likely place the chain continues and
-  the best candidate for a hop-5 data request.
+* **Известные seed × 0.5.** Правоохранительным органам эти 81 клиент уже
+  известны; ценность — в том, кто над ними, поэтому статус seed понижает
+  приоритет.
+* **Сборщики на границе обхода × 1.1** (с ограничением 1.0). `consolidator` или
+  `coordinator` на MAX_DEPTH — наиболее вероятное место продолжения цепочки и
+  лучший кандидат на запрос данных 5-го колена.
 
-`top_nodes.csv` holds 30 accounts. The `why` column names the components that
-actually drove the rank, taken from stored contributions rather than guessed.
-
----
-
-## 11. Clustering
-
-Louvain (`seed=42`, resolution from config) on the **undirected** projection
-weighted by `log1p(sum_kzt)`. Dropping direction is a real concession and is
-stated openly: community detection needs an undirected graph, while every role,
-metric and arrow shown to the analyst uses the directed one.
-
-Small components are **never absorbed** into large clusters: anything below
-`min_cluster_size` becomes its own cluster, each isolated seed a singleton.
-Numbering is by descending size with ties broken on the smallest gid, so it is
-stable across runs.
-
-**Stability is measured, not assumed:** Louvain is re-run under 5 seeds and the
-share of node pairs staying together is computed per cluster. On the organizers'
-data: mean 0.95, **78 clusters at ≥ 0.80**.
+`top_nodes.csv` содержит 30 счетов. Колонка `why` называет компоненты, которые
+действительно определили место, — они берутся из сохранённых вкладов, а не
+угадываются.
 
 ---
 
-## 11a. Optional analyses (brief §8)
+## 11. Кластеризация
 
-All four are implemented, deterministic, and run in about 0.1 s. **None of them
-changes a role, a score or a rank** — they are flags and context shown beside an
-account, exactly as the brief requires.
+Louvain (`seed=42`, разрешение из конфигурации) на **неориентированной**
+проекции с весами `log1p(sum_kzt)`. Отбрасывание направления — реальная
+уступка, и она заявлена открыто: выделение сообществ требует
+неориентированного графа, а все роли, метрики и стрелки, показываемые
+аналитику, используют направленный.
 
-| Analysis | What it produces |
+Мелкие компоненты **никогда не поглощаются** крупными кластерами: всё, что
+меньше `min_cluster_size`, становится отдельным кластером, каждый изолированный
+seed — одиночным. Нумерация по убыванию размера с разрешением ничьих по
+наименьшему gid, поэтому она стабильна между запусками.
+
+**Устойчивость измеряется, а не предполагается:** Louvain перезапускается с
+5 разными сидами, и по каждому кластеру считается доля пар узлов, остающихся
+вместе. На данных организаторов — среднее 0,95, **78 кластеров с
+устойчивостью ≥ 0,80**.
+
+---
+
+## 11a. Опциональные анализы (ТЗ §8)
+
+Все четыре реализованы, детерминированы и занимают около 0,1 с. **Ни один из
+них не меняет роль, оценку или место в списке** — это флаги и контекст рядом со
+счётом, ровно как требует ТЗ.
+
+| Анализ | Что даёт |
 |---|---|
-| **Cut-off artifact** | handled in the core: the `cutoff` role, no `terminal` at MAX_DEPTH, a priority boost for frontier collectors |
-| **Temporal patterns** | `median_lag_days`, `fast_pass_share` (by amount, not by count), `max_payers_same_day` for synchronized collection |
-| **Return flows and recurring routes** | directed cycles within a length bound, and repeated A→B→C chains where B forwarded within three days. Enumeration is capped, and the report says *"at least N"* rather than stating a total it did not compute |
-| **Network resilience** | remove the top-5/10/20 by priority and measure the largest component, the component count and how far seed money still reaches — **against a random-removal baseline**, because "the network fragments" means nothing without it |
-| **Anomaly flags** | amounts just above the reporting floor (what structuring looks like from the side that is visible), round-number amounts, and accounts extreme *for their own hop* — the only fair comparison when depth drives the distribution |
+| **Артефакт обрыва обхода** | в ядре: роль `cutoff`, отсутствие `terminal` на MAX_DEPTH, повышение приоритета сборщиков на границе |
+| **Временные паттерны** | `median_lag_days`, `fast_pass_share` (по сумме, а не по количеству), `max_payers_same_day` для синхронного сбора |
+| **Возвратные потоки и маршруты** | направленные циклы в пределах длины и повторяющиеся цепочки A→B→C с передачей в течение трёх дней. Перебор ограничен, и отчёт пишет *«не менее N»*, а не выдаёт за итог число, которое не считал |
+| **Устойчивость сети** | удаление топ-5/10/20 по приоритету с измерением крупнейшей компоненты, числа компонент и дальности прослеживания денег — **против базовой линии случайного удаления**, потому что «сеть распадается» без неё ничего не значит |
+| **Флаги аномалий** | суммы чуть выше порога отчётности (как выглядит дробление с видимой стороны), круглые суммы и счета, экстремальные *для своего колена* |
 
-Current run: 57 flagged accounts, ≥200 cycles, ≥50 recurring routes, and
-removing the top 20 shrinks the largest component by 3.4% against 1.7% at
-random — twice the damage of an arbitrary removal.
+Текущий запуск: 57 счетов с флагами, ≥200 циклов, ≥50 повторяющихся маршрутов;
+удаление топ-20 сокращает крупнейшую компоненту на 3,4 % против 1,7 % при
+случайном удалении — вдвое больший ущерб.
 
 ---
 
-## 12. Data limitations and how each is handled
+## 12. Ограничения данных и как они учтены
 
-| Announced limitation | Handling |
+| Заявленное ограничение | Как учтено |
 |---|---|
-| **Cut-off at hop 4** (444 nodes with no outgoing transfers) | `outflow_observed = depth < MAX_DEPTH`. These nodes can never be `terminal` — this is the fix for the 444 false sinks. They get the `cutoff` role, confidence is multiplied by 0.8, and if such a node also collects, its **priority is raised**: a collection point at the edge of the visible data is the best candidate for a hop-5 request. |
-| **Outgoing transfers only** | `pass_ratio` is computed only where both sides are trustworthy, otherwise NaN with the reason recorded — never a silent zero. |
-| **Seed inflows understated** | seeds get `pass_ratio = NaN` and are barred from `transit` and `terminal`. Their raw ratio runs up to 53 — an export artifact, not behaviour. |
-| **5,000 KZT floor** | structuring below it is invisible. Recorded as a gap and turned into a concrete request in `data_requests.md`. |
-| **19 seeds absent from the edges, 12 receive-only** | all present as nodes, role `peripheral`, with evidence saying exactly that. Never dropped: the export must have one row per participant. |
-| **16 components + 19 isolated seeds** | components are never merged. Anything below `min_cluster_size` is its own cluster, each isolated seed a singleton. |
-| **No customer attributes** | only structure, amounts and dates are used. The wording rules forbid inventing anything else. |
-| **No labelled roles** | nothing is validated against ground truth and no output claims certainty. Thresholds are justified by percentile, not by fitting. |
+| **Обрыв на 4-м колене** (444 узла без исходящих) | `outflow_observed = depth < MAX_DEPTH`. Эти узлы никогда не получают `terminal` — это и есть решение проблемы 444 ложных «стоков». Им присваивается роль `cutoff`, уверенность умножается на 0,8, а если узел ещё и собирает — его **приоритет повышается**: точка сбора на границе видимых данных лучший кандидат на запрос 5-го колена. |
+| **Только исходящие переводы** | `pass_ratio` считается только там, где обе стороны надёжны, иначе NaN с записанной причиной — никогда не тихий ноль. |
+| **Занижен вход у seed** | seed получают `pass_ratio = NaN` и не допускаются к ролям `transit` и `terminal`. Их сырое отношение доходит до 53 — это артефакт выгрузки, а не поведение. |
+| **Порог 5 000 ₸** | дробление сумм ниже порога невидимо. Зафиксировано как пробел и превращено в конкретный запрос в `data_requests.md`. |
+| **19 seed отсутствуют в рёбрах, 12 только получают** | все присутствуют как узлы, роль `peripheral`, обоснование прямо это указывает. Никогда не отбрасываются: в выгрузке обязана быть строка на каждого участника. |
+| **16 компонент + 19 изолированных seed** | компоненты не сливаются. Всё, что меньше `min_cluster_size`, — отдельный кластер, каждый изолированный seed — одиночный. |
+| **Нет атрибутов клиентов** | используются только структура, суммы и даты. Правила формулировок запрещают выдумывать что-либо ещё. |
+| **Нет разметки ролей** | ничего не сверяется с эталоном, ни один вывод не претендует на достоверность. Пороги обоснованы перцентилями, а не подгонкой. |
 
 ---
 
-## 13. Output schemas
+## 13. Схемы выгрузок
 
-**`nodes_roles.csv`** — one row per account, ascending `gid`.
+**`nodes_roles.csv`** — строка на счёт, по возрастанию `gid`.
 
-| Column | Type | Meaning |
+| Колонка | Тип | Смысл |
 |---|---|---|
-| `gid` | int64 | customer identifier |
-| `role` | str | one of the seven roles |
-| `role_score` | float | confidence in the role, 0–1 |
-| `cluster_id` | int64 | cluster number |
-| `priority_score` | float | review priority, 0–1 |
-| `evidence` | str | reason with numbers, ≤ 200 characters |
+| `gid` | int64 | идентификатор клиента |
+| `role` | str | одна из семи ролей |
+| `role_score` | float | уверенность в роли, 0–1 |
+| `cluster_id` | int64 | номер кластера |
+| `priority_score` | float | приоритет проверки, 0–1 |
+| `evidence` | str | обоснование с числами, ≤ 200 символов |
 
-Context columns follow (`depth`, `is_seed`, degrees, turnover, `pass_ratio`,
-`seed_reach`, `seed_kzt_attributed`, `secondary_roles`, the two observability
-flags). Extra columns are permitted by the brief; the six required ones lead, in
-order.
+Далее идут контекстные колонки (`depth`, `is_seed`, степени, обороты,
+`pass_ratio`, `seed_reach`, `seed_kzt_attributed`, `secondary_roles`, два флага
+наблюдаемости). Лишние колонки разрешены ТЗ; шесть обязательных идут первыми в
+заданном порядке.
 
 **`clusters.csv`** — `cluster_id, n_nodes, n_seed, sum_kzt_internal, top_gids,
-hypothesis`. `sum_kzt_internal` sums edges with both ends inside the cluster;
-`top_gids` is the five highest-priority accounts, `;`-separated.
+hypothesis`. `sum_kzt_internal` суммирует рёбра с обоими концами внутри
+кластера; `top_gids` — пять счетов с наибольшим приоритетом через `;`.
 
-**`top_nodes.csv`** — `rank, gid, role, priority_score, why`, 30 rows, ranks
-1..N.
+**`top_nodes.csv`** — `rank, gid, role, priority_score, why`, 30 строк,
+ранги 1..N.
 
-The exports are written **in English**: the jury checks the schema mechanically
-and the forbidden-word list is defined in English. The interface translates the
-evidence on the fly by rebuilding it from the `rule_trace`.
-
----
-
-## 14. Reproducibility
-
-* Thresholds and weights are in `config.yaml`, each with the distribution it
-  came from. No magic numbers in the code.
-* No gid is hardcoded. A test greps `src/` and `app/` for 5+ digit literals and
-  fails on anything that is not a declared config value.
-* One seed (`seed: 42`) drives Louvain, the stability sampling and the map
-  layouts. A test runs the computation twice and compares file hashes.
-* **Agent-chosen thresholds are persisted, not re-sampled.**
-  `config.calibrated.yaml` is committed, so a run on a reviewer's machine uses
-  exactly the numbers the calibrator picked here. `--recalibrate` is the
-  explicit opt-in to change them.
-* Versions are pinned in `requirements.txt`. No cloud, GPU or paid service.
-* Announced facts are checked, not trusted: §1 of `profile_report.md` compares
-  every figure from the brief against the files and flags mismatches loudly.
+Выгрузки формируются **на английском языке**: их схему жюри проверяет
+механически, а список запрещённых слов определён по-английски. Интерфейс
+переводит обоснования на лету, пересобирая их из `rule_trace`.
 
 ---
 
-## 15. Wording and privacy
+## 14. Воспроизводимость
 
-Every generated string — `evidence`, `why`, `hypothesis`, the data-request
-brief, every agent answer — is phrased as a hypothesis for verification ("signs
-of consolidation", "pattern consistent with transit", "candidate for review"),
-never as a statement about a person. The words *criminal*, *guilty*,
-*launderer*, *organizer is* and *confirmed* are blacklisted in `config.yaml`,
-checked in each agent's validator, again before the exports are written, and in
-the tests.
-
-The data is anonymized: `gid` is a synthetic identifier. No names, ages,
-genders, incomes or organizations are used, and the agent prompts explicitly
-forbid inventing them.
-
----
-
-## 16. Limitations of the approach
-
-* **Seed attribution is a heuristic.** Money is fungible: once two inflows mix,
-  no export can say which tenge went where. `seed_kzt_attributed` is an
-  upper-bound-style estimate of exposure, not an accounting fact.
-* **Thresholds are defensible, not optimal.** They come from observed
-  percentiles and are deliberately round. There is no ground truth to tune
-  against, and tuning to decimals would only look more precise.
-* **`terminal` is broad.** Half the graph qualifies, because most leaves simply
-  had nothing above the floor leaving them. Correct and nearly uninformative —
-  hence its low weight in the priority score.
-* **Direction is dropped for clustering.** Stated above; it affects grouping
-  only.
-* **One month, one bank.** Nothing here distinguishes a persistent structure
-  from a single month's coincidence.
-* **No validation.** With no labels, every output is a prioritization aid for an
-  analyst, not an established fact.
+* Пороги и веса — в `config.yaml`, каждый с указанием распределения. В коде
+  магических чисел нет.
+* Ни один gid не зашит в код. Тест ищет в `src/` и `app/` литералы из 5+ цифр и
+  падает на всём, что не является объявленным значением конфигурации.
+* Один сид (`seed: 42`) управляет Louvain, выборкой для оценки устойчивости и
+  раскладкой карт. Тест запускает расчёт дважды и сравнивает хеши файлов.
+* **Пороги, выбранные агентом, сохраняются, а не пересэмплируются.**
+  `config.calibrated.yaml` коммитится, поэтому запуск на машине проверяющего
+  использует ровно те числа, которые выбрал калибровщик здесь. `--recalibrate` —
+  явное согласие их изменить.
+* Версии закреплены в `requirements.txt`. Облако, GPU и платные сервисы не
+  требуются.
+* Заявленные факты проверяются, а не принимаются на веру: раздел 1
+  `profile_report.md` сверяет каждое число из ТЗ с файлами и громко сообщает о
+  расхождениях.
 
 ---
 
-## 17. Scaling to ~1M nodes
+## 15. Формулировки и приватность
 
-In the order things would bite:
+Каждая порождаемая строка — `evidence`, `why`, `hypothesis`, текст запросов
+данных, любой ответ агента — сформулирована как гипотеза для проверки
+(«признаки сбора», «характерно для транзита», «кандидат на проверку»), а не как
+утверждение о человеке. Слова *criminal*, *guilty*, *launderer*, *organizer is*,
+*confirmed* внесены в чёрный список в `config.yaml`, проверяются в валидаторе
+каждого агента, ещё раз перед записью выгрузок и в тестах.
 
-1. **Betweenness goes first.** Exact computation is O(VE) and is already the
-   most expensive stage. At 1M nodes: sampled approximation (`k≈1000` pivots) or
-   drop it — it feeds no rule, only context.
-2. **Graph library.** `networkx` stores a Python object per node. Moving to
-   `python-igraph` or `graph-tool` (C cores, 10–100× faster) does not touch the
-   rule logic, which reads only per-node scalars.
-3. **Louvain → Leiden.** Leiden guarantees well-connected communities and is
-   faster at scale; `igraph` ships it. The stability check would sample
-   components rather than re-running globally.
-4. **Attribution becomes sparse linear algebra.** The current round-based
-   propagation is a sparse matrix-vector product in disguise: `scipy.sparse`
-   with `MAX_DEPTH+1` multiplications, or one `spsolve` on `(I − αA)`.
-   `seed_reach` becomes a bitset product per component.
-5. **I/O.** DuckDB or Polars over the parquet files with predicate pushdown, so
-   ingestion never materializes the full frame.
-6. **Per-component parallelism.** The graph is already disconnected — 16
-   components here. Features, roles and clustering are component-local.
-7. **Thresholds are already percentile-derived**, so they rescale
-   automatically. That is why the report states them as percentiles rather than
-   as fitted constants.
-8. **The viewer stops loading the graph.** A precomputed backend — Neo4j or a
-   parquet-backed adjacency index — answering ego queries on demand. The
-   viewer's contract is already "read only what was exported", so only the
-   storage layer changes.
-9. **The agent layer barely changes.** It is bounded by the number of accounts
-   examined — the shortlist plus cluster leaders — not by graph size.
+Данные анонимизированы: `gid` — синтетический идентификатор. Имена, возраст,
+пол, доход и организации не используются, а промпты агентов прямо запрещают их
+выдумывать.
 
 ---
 
-## 18. Repository layout
+## 16. Ограничения подхода
+
+* **Атрибуция денег от seed — эвристика.** Деньги обезличены: после смешения
+  двух входящих потоков ни одна выгрузка не скажет, какой тенге куда ушёл.
+  `seed_kzt_attributed` — оценка подверженности сверху, а не бухгалтерский факт.
+* **Пороги обоснованы, но не оптимальны.** Они выведены из наблюдаемых
+  перцентилей и намеренно круглые. Эталона нет, подгонять не к чему, а подгонка
+  до десятых только выглядела бы точнее.
+* **Роль `terminal` широкая.** Ей соответствует половина графа, потому что у
+  большинства листьев просто не было исходящих выше порога. Формально верно и
+  почти неинформативно — отсюда низкий вес в приоритете.
+* **Направление отбрасывается при кластеризации.** Заявлено выше; влияет только
+  на группировку.
+* **Один месяц, один банк.** Ничто здесь не отличает устойчивую структуру от
+  совпадения в пределах одного месяца.
+* **Проверки не было.** При отсутствии разметки любой вывод — средство
+  расстановки приоритетов для аналитика, а не установленный факт.
+
+---
+
+## 17. Масштабирование до ~1 млн узлов
+
+В порядке того, что упрётся первым:
+
+1. **Betweenness убирается первым.** Точный расчёт — O(VE), и это уже самый
+   дорогой этап. На 1 млн узлов: приближение по выборке (`k≈1000` опорных
+   точек) либо отказ — он не участвует ни в одном правиле, только в контексте.
+2. **Графовая библиотека.** `networkx` хранит Python-объект на узел. Переход на
+   `python-igraph` или `graph-tool` (ядра на C, ускорение в 10–100 раз) не
+   затрагивает логику правил, которая читает только скаляры по узлу.
+3. **Louvain → Leiden.** Leiden гарантирует связность сообществ и быстрее на
+   больших графах; есть в `igraph`. Оценка устойчивости перешла бы на выборку
+   компонент вместо полного перезапуска.
+4. **Атрибуция становится разреженной линейной алгеброй.** Текущее
+   распространение по раундам — это произведение разреженной матрицы на вектор:
+   `scipy.sparse` с `MAX_DEPTH+1` умножениями либо один `spsolve` для
+   `(I − αA)`. `seed_reach` превращается в произведение битовых множеств по
+   компонентам.
+5. **Ввод-вывод.** DuckDB или Polars поверх parquet с проталкиванием
+   предикатов, чтобы загрузка никогда не материализовала весь кадр.
+6. **Параллелизм по компонентам.** Граф уже несвязен — здесь 16 компонент.
+   Признаки, роли и кластеризация локальны для компоненты.
+7. **Пороги уже выведены из перцентилей**, поэтому пересчитываются
+   автоматически. Именно поэтому в отчёте они записаны как перцентили, а не как
+   подогнанные константы.
+8. **Интерфейс перестаёт загружать граф целиком.** Предрасчитанный бэкенд —
+   Neo4j или индекс смежности в parquet — отвечающий на запросы окрестности по
+   требованию. Контракт интерфейса уже «читать только выгруженное», поэтому
+   меняется только слой хранения.
+9. **Слой агентов почти не меняется.** Он уже ограничен не размером графа, а
+   числом изучаемых узлов: короткий список плюс лидеры кластеров.
+
+---
+
+## 18. Структура репозитория
 
 ```
 .
-├── agent_run.sh                 # ONE command: install → compute → verify → interface
-├── run.py                       # computation entry point
-├── config.yaml                  # thresholds, weights, agents, budgets, pricing
-├── config.calibrated.yaml       # agent-chosen thresholds (generated, COMMITTED)
-├── requirements.txt             # pinned versions
-├── .env.example                 # three model setups
+├── agent_run.sh                 # ОДНА команда: установка → расчёт → проверка → интерфейс
+├── run.py                       # точка входа расчёта
+├── config.yaml                  # пороги, веса, агенты, лимиты, тарифы
+├── config.calibrated.yaml       # пороги, выбранные агентом (генерируется, КОММИТИТСЯ)
+├── requirements.txt             # закреплённые версии
+├── .env.example                 # три варианта настройки модели
 ├── Makefile                     # make run | offline | existing | test
-├── guideline.md                 # the working brief
-├── README.md / README.ru.md / README.kk.md
-├── data/                        # organizers' input files            (read-only)
-├── starter/                     # organizers' starter code           (read-only)
+├── guideline.md                 # рабочее техзадание
+├── data/                        # входные файлы организаторов        (только чтение)
+├── starter/                     # стартовый код организаторов        (только чтение)
 ├── src/moneygraph/
-│   ├── schema.py                # file discovery and column matching
-│   ├── io.py                    # canonical Dataset and provenance
-│   ├── profile.py               # data profile report
-│   ├── graph.py                 # DiGraph over every gid
-│   ├── features.py              # degrees, flows, centrality
-│   ├── temporal.py              # lag, fast pass-through, synchronized collection
+│   ├── schema.py                # поиск файлов и распознавание колонок
+│   ├── io.py                    # канонический Dataset и происхождение данных
+│   ├── profile.py               # отчёт по данным
+│   ├── graph.py                 # DiGraph по всем gid
+│   ├── features.py              # степени, обороты, центральности
+│   ├── temporal.py              # задержка, скорость транзита, синхронный сбор
 │   ├── attribution.py           # seed_reach, seed_kzt_attributed
-│   ├── roles.py                 # the rule engine and RuleTrace
-│   ├── clustering.py            # Louvain and stability
-│   ├── priority.py              # weighted percentile sum
-│   ├── evidence.py              # templates and the wording validator
-│   ├── i18n.py                  # three interface languages and evidence
-│   ├── extras.py                # optional analyses (brief §8)
-│   ├── webexport.py             # builds web_data.json for the frontend
-│   ├── export.py                # the deliverables
-│   ├── trace.py                 # time, tokens, spend
-│   ├── pipeline.py              # orchestration only
+│   ├── roles.py                 # движок правил и RuleTrace
+│   ├── clustering.py            # Louvain и оценка устойчивости
+│   ├── priority.py              # взвешенная сумма перцентилей
+│   ├── evidence.py              # шаблоны и проверка формулировок
+│   ├── i18n.py                  # три языка интерфейса и обоснований
+│   ├── extras.py                # опциональные анализы (ТЗ §8)
+│   ├── webexport.py             # собирает web_data.json для фронтенда
+│   ├── export.py                # выгрузки
+│   ├── trace.py                 # время, токены, стоимость
+│   ├── pipeline.py              # только оркестрация
 │   └── agents/
-│       ├── base.py              # agent framework: plan → act → validate → fall back
-│       ├── orchestrator.py      # the crew and agent_log.md
-│       ├── llm.py               # traced, budget-aware provider client
-│       ├── tools.py             # deterministic graph functions
-│       ├── calibrator_agent.py  # chooses role thresholds
-│       ├── investigator_agent.py# multi-step dossiers
-│       ├── critic_agent.py      # the argument against the shortlist
-│       ├── ingest_agent.py      # unfamiliar input schemas
-│       ├── narrator_agent.py    # RuleTrace → text, validated
-│       ├── analyst_agent.py     # natural-language questions
-│       └── review_agent.py      # data-request brief
-├── web/                         # standalone frontend — the DEFAULT interface
-│   ├── index.html               # one page, no build step
-│   ├── styles.css               # light and dark, no framework
-│   ├── app.js                   # rendering, graph, language switching
-│   └── serve.py                 # local server, opens the browser
-├── app/app.py                   # Gradio interface (en / ru / kk)
+│       ├── base.py              # каркас агента: план → действие → проверка → запасной путь
+│       ├── orchestrator.py      # команда агентов и agent_log.md
+│       ├── llm.py               # клиент провайдера с трассировкой и лимитами
+│       ├── tools.py             # детерминированные функции по графу
+│       ├── calibrator_agent.py  # выбирает пороги ролей
+│       ├── investigator_agent.py# многошаговые досье
+│       ├── critic_agent.py      # аргументы против списка
+│       ├── ingest_agent.py      # незнакомые схемы данных
+│       ├── narrator_agent.py    # RuleTrace → текст, с проверкой
+│       ├── analyst_agent.py     # вопросы на естественном языке
+│       └── review_agent.py      # запросы недостающих данных
+├── web/                         # собственный фронтенд — интерфейс ПО УМОЛЧАНИЮ
+│   ├── index.html · styles.css · app.js · serve.py
+├── app/app.py                   # интерфейс Gradio (en / ru / kk)
 ├── docs/
-│   ├── diagram.md               # solution diagram (Mermaid)
-│   ├── demo_script.md           # the 5-minute demo, timed, with real gids
-│   └── case_brief.docx          # the organizers' case description
-├── output_files/                # computation results
-└── tests/test_outputs.py        # 83 tests
+│   ├── diagram.md               # схема решения (Mermaid)
+│   ├── demo_script.md           # сценарий демонстрации на 5 минут
+│   └── case_brief.docx          # описание кейса от организаторов
+├── output_files/                # результаты расчёта
+└── tests/test_outputs.py        # 83 теста
 ```

@@ -1,8 +1,9 @@
 """Interface translations: Russian, Kazakh, English.
 
-English is the default — the code, the config and the case brief are all in
-English. Russian and Kazakh are first-class options, not afterthoughts: the
-analyst this tool is built for works in a Kazakhstani bank.
+Russian is the default: the analyst this tool is built for works in a
+Kazakhstani bank. English and Kazakh are first-class options, not
+afterthoughts. The code, the config and the exported CSVs stay in English,
+because the jury checks that schema mechanically.
 
 The Kazakh strings are machine translated and unreviewed. `MACHINE_TRANSLATED`
 marks that, the interface shows a banner whenever Kazakh is selected, and
@@ -26,10 +27,11 @@ jury and the forbidden-word list is defined in English.
 
 from __future__ import annotations
 
-# Order is the order shown in the language switcher. English first because it
-# is the default; the code, the config and the case brief are all in English.
-LANGUAGES = {"en": "English", "ru": "Русский", "kk": "Қазақша"}
-DEFAULT_LANG = "en"
+# Order is the order shown in the language switcher, default first. Russian
+# leads because the analyst this is built for works in a Kazakhstani bank; the
+# code, the config and the exported CSVs stay in English.
+LANGUAGES = {"ru": "Русский", "en": "English", "kk": "Қазақша"}
+DEFAULT_LANG = "ru"
 
 # The Kazakh strings were produced by machine translation and have not been
 # reviewed by a native speaker. That is disclosed in the interface itself

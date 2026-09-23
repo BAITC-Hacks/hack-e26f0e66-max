@@ -17,9 +17,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .i18n import (EVIDENCE, LANGUAGES, MACHINE_TRANSLATED, ROLE_MEANING,
-                   ROLE_NAMES, TAB_GUIDE, UI, evidence_from_trace,
-                   hypothesis_from_members, why_from_row)
+from .i18n import (DEFAULT_LANG, EVIDENCE, LANGUAGES, MACHINE_TRANSLATED,
+                   ROLE_MEANING, ROLE_NAMES, TAB_GUIDE, UI,
+                   evidence_from_trace, hypothesis_from_members,
+                   why_from_row)
 
 # Node fields the browser needs. Everything else stays in the parquet.
 NODE_FIELDS = [
@@ -136,6 +137,9 @@ def build(out_dir: str | Path, cfg: dict) -> Path:
         },
         "i18n": {
             "languages": LANGUAGES,
+            # The frontend reads the default from here rather than hardcoding
+            # one, so the two interfaces cannot disagree about it.
+            "default": DEFAULT_LANG,
             "machine_translated": sorted(MACHINE_TRANSLATED),
             "ui": UI,
             "role_names": ROLE_NAMES,

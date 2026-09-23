@@ -64,6 +64,12 @@ def run(data_dir: str | Path, out_dir: str | Path, config_path: str | Path,
         if crew.run_record.results:
             export.write_text("agent_log.md", crew.render_log(), out_dir)
         tracer.write(out_dir)
+        # LAST, deliberately. web_data.json embeds the run trace and the agent
+        # log, and both are written just above — building it inside the export
+        # stage meant the standalone interface always displayed the *previous*
+        # run's cost and timing.
+        _build_web_data(out_dir, cfg, Path(config_path).parent, tracer,
+                        skip=only_profile)
         tracer.print_summary()
 
     if tracer.elapsed_s >= tracer.max_runtime_s:
@@ -125,14 +131,21 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
               f"critic={plan['run_critic']} narrate={plan['narrate']}")
 
     # ---------------------------------------------------- calibrator (agent)
-    if plan.get("calibrate_thresholds"):
-        with tracer.stage("agent:calibrator"):
-            from .agents.calibrator_agent import apply_calibration
+    # This stage runs unconditionally, and that matters. A *saved* calibration
+    # is always applied: it is committed precisely so a reviewer's run
+    # reproduces the thresholds chosen here. The planner only decides whether
+    # to RE-DERIVE them, which is a question about spending a model call — not
+    # about which thresholds are in force. Gating the application on the
+    # planner's answer made the role counts depend on an LLM's mood: one run
+    # used the calibrated thresholds and the next silently used the defaults.
+    with tracer.stage("agent:calibrator"):
+        from .agents.calibrator_agent import apply_calibration
 
-            calibration = crew.calibrate(df, ds.max_depth, config_dir,
-                                         recalibrate, edges=ds.edges)
-            if calibration:
-                cfg = apply_calibration(cfg, calibration)
+        calibration = crew.calibrate(df, ds.max_depth, config_dir, recalibrate,
+                                     edges=ds.edges,
+                                     rerun=bool(plan.get("calibrate_thresholds")))
+        if calibration:
+            cfg = apply_calibration(cfg, calibration)
 
     # ----------------------------------------------------------- rule engine
     with tracer.stage("roles:base"):
@@ -252,14 +265,6 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
         export.write_text("ingest_report.json",
                           _json.dumps(ds.provenance, indent=2, ensure_ascii=False,
                                       default=str), out_dir)
-        # Everything the standalone web interface needs, in one file. Built
-        # here so the frontend never has to re-read data/ or recompute.
-        from . import webexport
-
-        cfg_for_web = {**cfg, "_config_dir": str(config_dir)}
-        web_path = webexport.build(out_dir, cfg_for_web)
-        paths.append(web_path)
-
         for p in paths:
             print(f"     wrote {p.name}")
 
@@ -433,6 +438,27 @@ def _warn_degenerate(counts: dict[str, int], n: int, tracer: RunTracer) -> None:
             f"`coordinator` claims {n_coord} of {n} nodes "
             f"({100 * n_coord / n:.1f}%) — the apex role should be a handful of "
             f"accounts; check that its convergence requirement is enabled")
+
+
+def _build_web_data(out_dir: Path, cfg: dict, config_dir: Path,
+                    tracer: RunTracer, skip: bool = False) -> None:
+    """Bundle everything the standalone interface reads into one file.
+
+    Runs in the pipeline's `finally`, so it must never mask the failure that
+    brought us here: if the exports are not on disk there is nothing to bundle,
+    and any error is reported rather than raised.
+    """
+    if skip or not (out_dir / "nodes_roles.csv").exists():
+        return
+    try:
+        from . import webexport
+
+        path = webexport.build(out_dir, {**cfg, "_config_dir": str(config_dir)})
+        print(f"     wrote {path.name}")
+    except Exception as exc:
+        tracer.note_warning(
+            f"could not build web_data.json ({type(exc).__name__}: {exc}); "
+            f"the standalone interface will show the previous run")
 
 
 def _print_extras(report: dict) -> None:

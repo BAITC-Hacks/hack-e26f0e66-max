@@ -30,3 +30,12 @@ flagged/
 
 # Network maps rendered by the viewer (regenerated on demand)
 output_files/_maps/
+
+# Vendored third-party assets for the standalone interface. Copied out of the
+# installed pyvis package by web/serve.py on startup, so they are regenerated
+# on any machine and do not belong in version control (nor do their licence
+# obligations, which travel with pyvis).
+web/vendor/
+
+# Gradio's own cache
+.gradio/
