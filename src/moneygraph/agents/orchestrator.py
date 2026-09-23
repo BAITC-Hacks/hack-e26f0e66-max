@@ -167,26 +167,63 @@ class Crew:
     # -------------------------------------------------------- investigation
 
     def investigate(self, top_df, traces: dict, tools, n: int) -> dict[int, dict]:
+        """Investigate the top `n` accounts, several at a time.
+
+        Each dossier is an independent multi-step tool loop of roughly five
+        calls, so run serially they dominate the wall clock — on one run the
+        stage took 125s, 42% of the whole latency budget, while the process sat
+        waiting on the network. They share no state, so they parallelize
+        cleanly; the tracer is locked and the budget is still checked before
+        each one is submitted.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         from .investigator_agent import InvestigatorAgent
 
         if n <= 0:
             return {}
-        agent = InvestigatorAgent(self.client, self.cfg, self.tracer, tools=tools)
-        dossiers: dict[int, dict] = {}
-        for row in top_df.head(n).itertuples(index=False):
-            if not self.tracer.agents_allowed():
-                self.tracer.note_warning(
-                    f"investigation stopped after {len(dossiers)} of {n} accounts "
-                    f"(budget)")
-                break
+        rows = list(top_df.head(n).itertuples(index=False))
+        workers = int((self.cfg.get("agents", {}) or {})
+                      .get("investigator", {}).get("concurrency", 5))
+        workers = max(1, min(workers, len(rows)))
+
+        def one(row):
             gid = int(row.gid)
             trace = traces.get(gid)
-            result = self.run_record.add(agent.run({
-                "gid": gid,
-                "rank": int(row.rank),
+            # A fresh agent per thread: they hold no shared mutable state, but
+            # one instance per task keeps that true by construction.
+            agent = InvestigatorAgent(self.client, self.cfg, self.tracer, tools=tools)
+            return agent.run({
+                "gid": gid, "rank": int(row.rank),
                 "gate": trace.gate if trace else "",
                 "metrics": trace.metrics if trace else {},
-            }, f"investigate {gid}"))
+            }, f"investigate {gid}")
+
+        dossiers: dict[int, dict] = {}
+        results = []
+        with ThreadPoolExecutor(max_workers=workers,
+                                thread_name_prefix="investigator") as pool:
+            futures = {}
+            for row in rows:
+                if not self.tracer.agents_allowed():
+                    self.tracer.note_warning(
+                        f"investigation stopped after {len(futures)} of {n} "
+                        f"accounts (budget)")
+                    break
+                futures[pool.submit(one, row)] = int(row.gid)
+            for fut in as_completed(futures):
+                gid = futures[fut]
+                try:
+                    results.append((gid, fut.result()))
+                except Exception as exc:
+                    self.tracer.note_warning(
+                        f"investigation of {gid} raised {type(exc).__name__}: {exc}")
+
+        # Record in rank order, not completion order, so the log and the
+        # dossier file are identical across runs.
+        order = {int(r.gid): i for i, r in enumerate(rows)}
+        for gid, result in sorted(results, key=lambda kv: order.get(kv[0], 0)):
+            self.run_record.add(result)
             if result.output:
                 dossiers[gid] = result.output
         self.run_record.dossiers = dossiers

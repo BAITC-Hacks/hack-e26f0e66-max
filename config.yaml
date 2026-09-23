@@ -244,7 +244,7 @@ llm:
   provider: openai
   base_url: null               # e.g. http://localhost:8000/v1 for vLLM
   api_key_env: [OPENAI_KEY, OPENAI_API_KEY, MONEYGRAPH_API_KEY]
-  model: gpt-6-luna
+  model: gpt-6-sol
 
   # Wire format. `auto` uses the Responses API for single-turn calls (it reports
   # reasoning tokens) and Chat Completions for tool loops. Set `chat` for any
@@ -325,6 +325,10 @@ agents:
     enabled: true              # multi-step case dossier per priority account
     max_steps: 6               # tool calls per account before it must conclude
     max_output_tokens: 2000
+    # Dossiers share no state, so they run several at a time. Serial, the stage
+    # took 125s — 42% of the whole latency budget — almost all of it waiting on
+    # the network. Lower this if your provider rate-limits you.
+    concurrency: 5
 
   critic:
     enabled: true              # argues against the shortlist; writes review_notes.md
@@ -377,7 +381,10 @@ viewer:
   ego_hops_default: 1
   ego_max_nodes: 300           # beyond this the ego map is capped and says so
   cluster_map_max_nodes: 400
-  physics: false               # precomputed layout; keeps large maps responsive
+  physics: false               # positions are precomputed, so maps open settled
+  # How far apart nodes are placed. Raise it if maps still look cramped; the
+  # value is scaled by node count, so it behaves on both small and large groups.
+  layout_spread: 190
   role_colors:
     coordinator: "#b3202c"
     consolidator: "#d9822b"

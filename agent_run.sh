@@ -83,49 +83,114 @@ trap cleanup INT TERM
 trap 'fail "failed at line $LINENO"' ERR
 
 printf '\n%s╭────────────────────────────────────────────────────────────╮%s\n' "$B" "$R"
-printf '%s│  Money Graph — reconstructing structure from transfers      │%s\n' "$B" "$R"
+printf '%s│  Money Graph — reconstructing structure from transfers     │%s\n' "$B" "$R"
 printf '%s╰────────────────────────────────────────────────────────────╯%s\n' "$B" "$R"
 
 # ================================================================ 1. python
 step "Python environment"
 
+# --- find an interpreter --------------------------------------------------
 PY=""
-for c in python3.12 python3.11 python3 python; do
+for c in python3.13 python3.12 python3.11 python3.10 python3 python; do
   if command -v "$c" >/dev/null 2>&1; then
     if "$c" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
       PY="$c"; break
     fi
   fi
 done
-[[ -z "$PY" ]] && { fail "Python 3.10+ not found on PATH"; exit 3; }
+if [[ -z "$PY" ]]; then
+  fail "Python 3.10 or newer was not found on PATH"
+  info "install it and re-run, e.g.:  brew install python@3.12"
+  info "                              sudo apt install python3 python3-venv"
+  exit 3
+fi
 ok "$("$PY" --version 2>&1) at $(command -v "$PY")"
 
-if [[ ! -d .venv ]]; then
-  info "creating .venv…"
-  "$PY" -m venv .venv || { fail "could not create a virtualenv"; exit 3; }
-  ok "created .venv"
-else
-  ok "using existing .venv"
+# --- locate the interpreter inside a venv (posix and windows layouts) -----
+venv_python() {
+  if   [[ -x "$1/bin/python"        ]]; then echo "$1/bin/python"
+  elif [[ -x "$1/Scripts/python.exe" ]]; then echo "$1/Scripts/python.exe"
+  else echo ""; fi
+}
+
+# --- create the venv, or repair one that is broken ------------------------
+# A .venv can exist and still be unusable: a half-finished creation, a venv
+# built by a Python that has since been upgraded or uninstalled, a copied
+# working tree. Test it rather than trusting that the directory is there.
+VPY="$(venv_python .venv)"
+VENV_OK=0
+if [[ -n "$VPY" ]] && "$VPY" -c 'import sys' >/dev/null 2>&1; then
+  VENV_OK=1
 fi
-VPY=".venv/bin/python"
-[[ -x "$VPY" ]] || VPY=".venv/Scripts/python.exe"      # windows/git-bash
-[[ -x "$VPY" ]] || { fail "no python inside .venv"; exit 3; }
+
+if [[ $VENV_OK -eq 1 ]]; then
+  ok "using existing .venv ($("$VPY" --version 2>&1))"
+else
+  if [[ -e .venv ]]; then
+    warn ".venv exists but its interpreter does not run — rebuilding it"
+    rm -rf .venv
+  else
+    info "no .venv yet — creating one"
+  fi
+  if ! "$PY" -m venv .venv >>"$LOG_DIR/venv.log" 2>&1; then
+    fail "could not create a virtualenv — see $LOG_DIR/venv.log"
+    tail -n 8 "$LOG_DIR/venv.log" 2>/dev/null || true
+    info "on Debian/Ubuntu this usually means:  sudo apt install python3-venv"
+    exit 3
+  fi
+  VPY="$(venv_python .venv)"
+  if [[ -z "$VPY" ]]; then
+    fail "the virtualenv was created but contains no interpreter"
+    exit 3
+  fi
+  ok "created .venv ($("$VPY" --version 2>&1))"
+fi
+
+# Everything downstream — including the deliverables check and the viewer —
+# expects the output folder to exist even on a first, failed run.
+mkdir -p "$("$VPY" -c "import yaml" 2>/dev/null && \
+            "$VPY" -c "import yaml;print(yaml.safe_load(open('config.yaml'))['paths']['outputs'])" \
+            2>/dev/null || echo output_files)"
 
 # ========================================================== 2. dependencies
 step "Dependencies"
 
-if [[ $SKIP_INSTALL -eq 1 ]]; then
-  info "skipped (--skip-install)"
-elif "$VPY" -c 'import pandas, networkx, gradio, pyvis, plotly, yaml, pyarrow' 2>/dev/null; then
+# The one check that matters: can the pipeline and the viewer be imported?
+deps_present() {
+  "$VPY" - <<'PY' >/dev/null 2>&1
+import importlib
+for mod in ("pandas", "pyarrow", "numpy", "networkx", "scipy",
+            "yaml", "gradio", "pyvis"):
+    importlib.import_module(mod)
+PY
+}
+
+install_deps() {
+  "$VPY" -m ensurepip --upgrade >>"$LOG_DIR/pip.log" 2>&1 || true
+  "$VPY" -m pip install --quiet --upgrade pip >>"$LOG_DIR/pip.log" 2>&1 || true
+  "$VPY" -m pip install --quiet -r requirements.txt >>"$LOG_DIR/pip.log" 2>&1
+}
+
+if deps_present; then
   ok "already satisfied"
+elif [[ $SKIP_INSTALL -eq 1 ]]; then
+  # --skip-install must not turn a missing dependency into a confusing crash
+  # several steps later.
+  fail "--skip-install was passed but the dependencies are not importable"
+  info "re-run without --skip-install"
+  exit 3
 else
-  info "installing from requirements.txt (first run takes a minute)…"
-  if "$VPY" -m pip install --quiet --upgrade pip >>"$LOG_DIR/pip.log" 2>&1 \
-     && "$VPY" -m pip install --quiet -r requirements.txt >>"$LOG_DIR/pip.log" 2>&1; then
+  info "installing from requirements.txt (the first run takes a minute)…"
+  if ! install_deps || ! deps_present; then
+    warn "first install attempt did not satisfy the imports — retrying"
+    install_deps || true
+  fi
+  if deps_present; then
     ok "installed"
   else
-    fail "pip install failed — see $LOG_DIR/pip.log"
-    tail -n 15 "$LOG_DIR/pip.log" || true
+    fail "dependencies could not be installed — see $LOG_DIR/pip.log"
+    tail -n 15 "$LOG_DIR/pip.log" 2>/dev/null || true
+    info "check network access, then re-run"
     exit 3
   fi
 fi
@@ -133,7 +198,15 @@ fi
 # ================================================================= 3. model
 step "Agent layer"
 
-[[ -f .env ]] || { [[ -f .env.example ]] && cp .env.example .env && info "created .env from .env.example"; }
+if [[ ! -f .env ]]; then
+  if [[ -f .env.example ]]; then
+    cp .env.example .env
+    info "created .env from .env.example (no key set — that is fine)"
+  else
+    : > .env
+    info "created an empty .env"
+  fi
+fi
 
 HAVE_KEY=0
 if [[ $OFFLINE -eq 1 ]]; then

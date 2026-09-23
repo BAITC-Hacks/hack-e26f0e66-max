@@ -9,10 +9,10 @@ Every agent action in this run: what it was asked, which deterministic tools it 
 ```json
 {
   "calibrate_thresholds": false,
-  "investigate_top_n": 12,
+  "investigate_top_n": 8,
   "run_critic": true,
   "narrate": false,
-  "reasoning": "The role mix is not obviously lopsided, and the 444 cutoff accounts match the 444 accounts at hop 4, so recalibration has little clear justification. The 164 accounts labeled transit, consolidator, or distributor provide a substantial but bounded pool of candidates for review; investigate 12, then use the critic to check priority sensitivity and possible collection artifacts."
+  "reasoning": "The 444 cutoff accounts match the 444 accounts at the maximum observed depth, so the current role distribution does not by itself justify recalibration. Investigate a small priority set rather than all 164 transit, consolidator, and distributor candidates; run the critic to check whether collection boundaries or threshold sensitivity change that priority. Narration would not change the review plan."
 }
 ```
 
@@ -20,20 +20,16 @@ Every agent action in this run: what it was asked, which deterministic tools it 
 
 | Agent | Task | Outcome | Steps | Seconds |
 |---|---|---|---:|---:|
-| planner | plan the run | accepted | 2 | 5.96 |
-| investigator | investigate 100000004015047100 | accepted | 7 | 11.59 |
-| investigator | investigate 100000003115284100 | accepted | 7 | 7.94 |
-| investigator | investigate 100000008165763100 | accepted | 7 | 5.63 |
-| investigator | investigate 100000002718366100 | accepted | 9 | 15.52 |
-| investigator | investigate 100000001253557100 | accepted | 6 | 8.63 |
-| investigator | investigate 100000002838861100 | accepted | 7 | 9.48 |
-| investigator | investigate 100000007594394100 | accepted | 9 | 9.72 |
-| investigator | investigate 100000004156082100 | accepted | 7 | 9.20 |
-| investigator | investigate 100000001303311100 | accepted | 7 | 11.48 |
-| investigator | investigate 100000002398779100 | accepted | 7 | 8.87 |
-| investigator | investigate 100000001282143100 | accepted | 6 | 16.69 |
-| investigator | investigate 100000008144528100 | accepted | 6 | 10.42 |
-| critic | challenge the shortlist | accepted | 2 | 16.87 |
+| planner | plan the run | accepted | 2 | 4.92 |
+| investigator | investigate 100000004015047100 | accepted | 6 | 8.88 |
+| investigator | investigate 100000003115284100 | accepted | 6 | 8.77 |
+| investigator | investigate 100000008165763100 | accepted | 6 | 7.15 |
+| investigator | investigate 100000002718366100 | accepted | 11 | 11.45 |
+| investigator | investigate 100000001253557100 | accepted | 10 | 12.48 |
+| investigator | investigate 100000002838861100 | accepted | 6 | 9.87 |
+| investigator | investigate 100000007594394100 | accepted | 7 | 10.79 |
+| investigator | investigate 100000004156082100 | accepted | 6 | 9.06 |
+| critic | challenge the shortlist | accepted | 2 | 15.66 |
 
 ## Transcripts
 
@@ -45,7 +41,7 @@ Every agent action in this run: what it was asked, which deterministic tools it 
 - **output**
 
   ```json
-  {"calibrate_thresholds": false, "investigate_top_n": 12, "run_critic": true, "narrate": false, "reasoning": "The role mix is not obviously lopsided, and the 444 cutoff accounts match the 444 accounts at hop 4, so recalibration has little clear justification. The 164 accounts labeled transit, consolidator, or distributor provide a substantial but bounded pool of candidates for review; investigate 12, then use the critic to check priority sensitivity and possible collection artifacts."}
+  {"calibrate_thresholds": false, "investigate_top_n": 8, "run_critic": true, "narrate": false, "reasoning": "The 444 cutoff accounts match the 444 accounts at the maximum observed depth, so the current role distribution does not by itself justify recalibration. Investigate a small priority set rather than all 164 transit, consolidator, and distributor candidates; run the critic to check whether collection boundaries or threshold sensitivity change that priority. Narration would not change the review plan."}
   ```
 
 
@@ -82,17 +78,10 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 8, "n_nodes": 96, "n_seed": 3, "sum_kzt_internal": 10387390.0, "hypothesis": "Possible control layer: 1 candidate upper-level node(s), money from 3 seed(s) converging; 100000004015047100 ranks highest.", "role_counts": {"terminal": 36, "cutoff": 30, "peripheral": 22, "transit": 4, "distributor": 2, "consolidator": 1, "coordinator": 1}, "top_gids": [100000004015047100, 100000003111305100, 100000001641789100, 100000001904863100, 100000002870463100]}
   ```
   </details>
-- **tool** `node_card({"gid": 100000001616816100})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"gid": 100000001616816100, "role": "consolidator", "role_score": 0.5, "priority_score": 0.3466, "cluster_id": 8, "depth": 0, "is_seed": true, "in_deg": 5, "out_deg": 3, "in_sum_kzt": 176195.0, "out_sum_kzt": 181326.0, "seed_reach": 10, "seed_kzt_attributed": 0.0, "evidence": "Receives from 5 distinct payers, 176k KZT; forwards 103% \u2014 signs of consolidation.", "secondary_roles": "", "outflow_observed": true}
-  ```
-  </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000004015047100 is a non-seed coordinator with 9 incoming payers totaling 919,104 KZT and one outgoing recipient, 100000001616816100, receiving 69,195 KZT. Its card reports reach from 11 seeds; the pattern is consistent with a multi-payer collection point, but the observed outflow is limited to one recipient.", "pattern": "multi-payer collection point", "supporting_gids": [100000004015047100, 100000001616816100, 100000007982728100, 100000007747786100, 100000001616816100], "alternative_explanation": "A legitimate shared collection account, such as one receiving pooled payments before onward settlement, could produce this structure; the network data alone does not establish purpose.", "next_step": "Request and review the transaction details and documented purpose for the 69,195 KZT sent to 100000001616816100, and reconcile it against the incoming funds.", "confidence": "medium"}
+  {"summary": "Account 100000004015047100 is a candidate collection point for review: nine accounts paid it KZT 919,104, and its card links it to 11 seeds across five clusters. Only KZT 69,195 of outflow is observed, all to seed payer 100000001616816100; the tools do not establish how quickly funds moved.", "pattern": "multi-payer collection point with reciprocal flow", "supporting_gids": [100000004015047100, 100000001616816100, 100000007982728100, 100000007747786100], "alternative_explanation": "For 100000004015047100, a legitimate collection or settlement account could receive payments from multiple accounts and make a smaller payment back to one payer; structure and amounts alone do not distinguish the purpose.", "next_step": "Request transaction timestamps and payment purposes for flows between 100000004015047100 and 100000001616816100 to assess the reciprocal payments and whether funds moved quickly.", "confidence": "medium"}
   ```
 
 
@@ -129,17 +118,10 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 5, "n_nodes": 134, "n_seed": 3, "sum_kzt_internal": 17372446.0, "hypothesis": "Possible control layer: 3 candidate upper-level node(s), money from 3 seed(s) converging; 100000003115284100 ranks highest.", "role_counts": {"terminal": 82, "peripheral": 28, "cutoff": 12, "transit": 5, "coordinator": 3, "distributor": 3, "consolidator": 1}, "top_gids": [100000003115284100, 100000008165763100, 100000001072022100, 100000008730846100, 100000005432267100]}
   ```
   </details>
-- **tool** `common_downstream({"gids": [100000003115284100], "max_hops": 2})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"gid": 100000003360542100, "role": "peripheral", "role_score": 0.6, "priority_score": 0.6489, "cluster_id": 5, "depth": 2, "is_seed": false, "in_deg": 2, "out_deg": 2, "in_sum_kzt": 317000.0, "out_sum_kzt": 51800.0, "seed_reach": 11, "seed_kzt_attributed": 133372.43109449846, "evidence": "No role indicators: 2 payers, 2 recipients, 317k KZT in / 52k KZT out.", "secondary_roles": "", "outflow_observed": true}, {"gid": 100000003390036100, "role": "peripheral", "role_score": 0.6, "priority_score": 0.6447, "cluster_id": 5, "depth": 2, "is_seed": false, "in_deg": 2, "out_deg": 2, "in_sum_kzt": 231300.0, "out_sum_kzt": 62000.0, "seed_reach": 11, "seed_kzt_attributed": 97311.40428236642, "evidence": "No role indicators: 2 payers, 2 recipients, 231k KZT in / 62k KZT out.", "secondary_roles": "", "outflow_observed": true}, {"gid": 100000005873152100, "role": "transit", "role_score": 1.0, "priority_score": 0.6382, "cluster_id": 5, "depth": 3, "is_seed": false, "in_deg": 1, "out_deg": 1, "in_sum_kzt": 10000.0, "out_sum_kzt": 10000.0, "seed_reach": 11, "seed_kzt_attributed": 4196.612383875105, "evidence": "In 10k KZT / out 10k KZT (ratio 1.00) \u2014 pattern consistent with transit.", "secon… [1653 chars]
-  ```
-  </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000003115284100 shows signs of a multi-payer collection point: 8 accounts paid it 2,160,500 KZT, including 7 classified as consolidators or coordinators, and its seed reach is 11. It sent 517,000 KZT to two accounts; both are reachable downstream (100000003360542100 and 100000003390036100), within cluster 5.", "pattern": "multi-payer collection point", "supporting_gids": [100000003115284100, 100000000343175100, 100000000331309100, 100000000437046100, 100000003684369100, 100000008730846100, 100000008165763100, 100000001857829100, 100000001857829100, 100000003360542100, 100000003390036100], "alternative_explanation": "A legitimate collection or settlement account could receive pooled payments and pass some funds to downstream accounts; the transfer structure and amounts alone cannot distinguish that from other explanations.", "next_step": "Review transaction timing and purpose, and request supporting documentation for the incoming funds and the two outgoing transfers to 100000003360542100 and 100000003390036100.", "confidence": "high"}
+  {"summary": "Account 100000003115284100 is a candidate multi-cluster collection point: eight accounts paid it 2,160,500 KZT, including seed accounts 100000000343175100 and 100000003684369100; its card traces funds from 11 seeds. It sent 517,000 KZT to 100000003360542100 and 100000003390036100. The available results do not establish how quickly funds moved on.", "pattern": "multi-payer collection point", "supporting_gids": [100000003115284100, 100000000343175100, 100000003684369100, 100000003360542100, 100000003390036100], "alternative_explanation": "A legitimate account collecting payments and making onward payments could show the same structure and amounts.", "next_step": "Request timestamped transaction records and payment purposes for account 100000003115284100 to test whether incoming funds were promptly passed to its two recipients.", "confidence": "medium"}
   ```
 
 
@@ -155,7 +137,7 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"gid": 100000008165763100, "role": "coordinator", "role_score": 1.0, "priority_score": 0.943, "cluster_id": 5, "depth": 1, "is_seed": false, "in_deg": 15, "out_deg": 17, "in_sum_kzt": 1165815.0, "out_sum_kzt": 1267858.0, "seed_reach": 9, "seed_kzt_attributed": 189244.80946909197, "evidence": "Money from 9 seeds converges here via 10 collector/transit accounts across 6 clusters \u2014 candidate upper-level node for review. Also matches: consolidator.", "secondary_roles": "consolidator", "outflow_observed": true}
   ```
   </details>
-- **tool** `payers({"gids": [100000008165763100]})` (0.00s)
+- **tool** `payers({"gids": [100000008165763100]})` (0.01s)
   <details><summary>result</summary>
 
   ```
@@ -176,17 +158,10 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 5, "n_nodes": 134, "n_seed": 3, "sum_kzt_internal": 17372446.0, "hypothesis": "Possible control layer: 3 candidate upper-level node(s), money from 3 seed(s) converging; 100000003115284100 ranks highest.", "role_counts": {"terminal": 82, "peripheral": 28, "cutoff": 12, "transit": 5, "coordinator": 3, "distributor": 3, "consolidator": 1}, "top_gids": [100000003115284100, 100000008165763100, 100000001072022100, 100000008730846100, 100000005432267100]}
   ```
   </details>
-- **tool** `common_downstream({"gids": [100000008165763100], "max_hops": 2})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"gid": 100000003115284100, "role": "coordinator", "role_score": 1.0, "priority_score": 0.9681, "cluster_id": 5, "depth": 1, "is_seed": false, "in_deg": 8, "out_deg": 2, "in_sum_kzt": 2160500.0, "out_sum_kzt": 517000.0, "seed_reach": 11, "seed_kzt_attributed": 909465.0073143267, "evidence": "Money from 11 seeds converges here via 7 collector/transit accounts across 5 clusters \u2014 candidate upper-level node for review. Also matches: consolidator.", "secondary_roles": "consolidator", "outflow_observed": true}, {"gid": 100000007594394100, "role": "coordinator", "role_score": 0.875, "priority_score": 0.872, "cluster_id": 20, "depth": 2, "is_seed": false, "in_deg": 6, "out_deg": 1, "in_sum_kzt": 395385.0, "out_sum_kzt": 3376312.0, "seed_reach": 9, "seed_kzt_attributed": 7124.321284037761, "evidence": "Money from 9 seeds converges here via 5 collector/transit accounts across 4 clusters \u2014 candidate upper-level node for review. Also matches: consolidator.", "secondary_roles": "consolidator", "outflow_observed": true}, {"gid": 100000006446271100, "role": "terminal", "role_score": 1.0, "priority_score": 0.7656, "cluster_id": 5, "depth": 1, "is_seed": false, "in_deg": 2, "out_deg": 0… [11049 chars]
-  ```
-  </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000008165763100 shows a collection-and-distribution pattern: 15 payers send 1,165,815 KZT, and it sends 1,267,858 KZT to 17 recipients. The tool evidence reports money from 9 seeds reaching it via collector/transit accounts; its many onward payments make it a candidate upper-level node for review.", "pattern": "multi-payer collection and distribution point", "supporting_gids": [100000008165763100, 100000004358004100, 100000003880331100, 100000003115284100, 100000006564102100], "alternative_explanation": "A legitimate merchant or service collecting payments and paying multiple suppliers or recipients could produce this structure; the transfer data alone cannot distinguish that from coordinated pass-through activity.", "next_step": "Request and review transaction-purpose records and supporting invoices or contracts for the incoming and outgoing transfers, prioritizing the flows from seed payer 100000004358004100 and to coordinator 100000003115284100.", "confidence": "high"}
+  {"summary": "Account 100000008165763100 shows a candidate collection-and-distribution pattern: 15 payers sent it 1,165,815 KZT, including seed 100000004358004100; its card attributes reach from nine seeds across six clusters. It sent 1,267,858 KZT to 17 recipients, including coordinator 100000003115284100 and terminal 100000006564102100. Transfer timing is not available, so rapid onward movement cannot be established.", "pattern": "multi-payer collection and distribution", "supporting_gids": [100000008165763100, 100000004358004100, 100000003115284100, 100000006564102100], "alternative_explanation": "Account 100000008165763100 could be a legitimate payment intermediary collecting funds and paying multiple beneficiaries; the network structure and amounts alone do not distinguish that from the review hypothesis.", "next_step": "Request timestamped transaction records and payment purposes for account 100000008165763100 to test whether incoming funds are promptly forwarded to recipients such as 100000003115284100 and 100000006564102100.", "confidence": "medium"}
   ```
 
 
@@ -223,13 +198,6 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 1, "n_nodes": 203, "n_seed": 4, "sum_kzt_internal": 51424768.62, "hypothesis": "Possible control layer: 4 candidate upper-level node(s), money from 4 seed(s) converging; 100000002718366100 ranks highest.", "role_counts": {"terminal": 84, "cutoff": 62, "peripheral": 35, "distributor": 12, "coordinator": 4, "transit": 4, "consolidator": 2}, "top_gids": [100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100, 100000008547948100]}
   ```
   </details>
-- **tool** `payers({"gids": [100000008547948100, 100000008710791100, 100000001162560100, 100000008517538100, 100000008466579100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000005498992100, "dst": 100000001162560100, "sum_kzt": 331300.0, "n_tx": 2, "role": "distributor", "is_seed": true}, {"src": 100000008517538100, "dst": 100000008710791100, "sum_kzt": 115000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008489922100, "dst": 100000008517538100, "sum_kzt": 70500.0, "n_tx": 4, "role": "distributor", "is_seed": false}, {"src": 100000008547844100, "dst": 100000008547948100, "sum_kzt": 61000.0, "n_tx": 2, "role": "distributor", "is_seed": false}, {"src": 100000008121806100, "dst": 100000008547948100, "sum_kzt": 60197.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000005527892100, "dst": 100000008710791100, "sum_kzt": 54510.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008466579100, "dst": 100000008517538100, "sum_kzt": 50000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008466579100, "dst": 100000008547948100, "sum_kzt": 35000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008710843100, "dst": 100000008517538100, "sum_kzt": 35000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008465789100, "dst": 1000000084665… [1909 chars]
-  ```
-  </details>
 - **tool** `node_card({"gid": 100000008547948100})` (0.00s)
   <details><summary>result</summary>
 
@@ -244,10 +212,31 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"gid": 100000008710791100, "role": "distributor", "role_score": 0.662, "priority_score": 0.7325, "cluster_id": 1, "depth": 2, "is_seed": false, "in_deg": 3, "out_deg": 23, "in_sum_kzt": 181510.0, "out_sum_kzt": 5521511.0, "seed_reach": 9, "seed_kzt_attributed": 6960.229358455253, "evidence": "Fans out to 23 recipients (5.5M KZT) against 3 payers \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
   ```
   </details>
+- **tool** `node_card({"gid": 100000001162560100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000001162560100, "role": "distributor", "role_score": 0.525, "priority_score": 0.5798, "cluster_id": 1, "depth": 1, "is_seed": false, "in_deg": 1, "out_deg": 12, "in_sum_kzt": 331300.0, "out_sum_kzt": 2904398.0, "seed_reach": 1, "seed_kzt_attributed": 331300.0, "evidence": "Fans out to 12 recipients (2.9M KZT) against 1 payer \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
+- **tool** `node_card({"gid": 100000008517538100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000008517538100, "role": "distributor", "role_score": 0.588, "priority_score": 0.644, "cluster_id": 1, "depth": 3, "is_seed": false, "in_deg": 3, "out_deg": 17, "in_sum_kzt": 155500.0, "out_sum_kzt": 1439000.0, "seed_reach": 8, "seed_kzt_attributed": 204.20477542821826, "evidence": "Fans out to 17 recipients (1.4M KZT) against 3 payers \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
+- **tool** `node_card({"gid": 100000008466579100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000008466579100, "role": "distributor", "role_score": 0.588, "priority_score": 0.7025, "cluster_id": 1, "depth": 2, "is_seed": false, "in_deg": 2, "out_deg": 17, "in_sum_kzt": 36952.0, "out_sum_kzt": 1933000.0, "seed_reach": 8, "seed_kzt_attributed": 6001.311994635919, "evidence": "Fans out to 17 recipients (1.9M KZT) against 2 payers \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000002718366100 is a non-seed terminal in cluster 1: it receives 2.525M KZT from six accounts and has no observed outgoing edges. Five payers are classified as distributors or consolidator; its card reports reach from nine seeds through upstream accounts, making it a candidate upper-level collection point for review.", "pattern": "multi-payer terminal collection point", "supporting_gids": [100000002718366100, 100000008547948100, 100000008710791100, 100000001162560100, 100000008517538100, 100000008466579100, 100000005498992100], "alternative_explanation": "A legitimate salary, pooled-payment, or merchant-settlement account could also receive transfers from multiple accounts and retain funds; structure and amounts alone cannot distinguish these explanations.", "next_step": "Request the account\u2019s stated purpose and supporting records for the incoming transfers, then reconcile them against the upstream flows from payers such as 100000008547948100 and 100000008710791100.", "confidence": "medium"}
+  {"summary": "Account 100000002718366100 is a candidate collection point for review: six accounts paid it 2,525,000 KZT, including consolidator 100000008547948100 and four distributor accounts. Its card links it to nine seeds, while no outgoing transfers are observed; the data therefore does not show money moving on quickly.", "pattern": "seed-linked collection endpoint", "supporting_gids": [100000002718366100, 100000008547948100, 100000008710791100, 100000001162560100, 100000008517538100, 100000008466579100, 100000008620570100], "alternative_explanation": "Account 100000002718366100 could be a legitimate settlement or savings destination receiving payments from several accounts; the observed transfer structure alone cannot distinguish that from a collection point.", "next_step": "Request transaction timestamps and the underlying purpose or counterparty records for transfers into 100000002718366100 to verify why these payers converge there.", "confidence": "medium"}
   ```
 
 
@@ -270,13 +259,6 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   [{"src": 100000008466579100, "dst": 100000001253557100, "sum_kzt": 80000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000003589877100, "dst": 100000001253557100, "sum_kzt": 50000.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008680731100, "dst": 100000001253557100, "sum_kzt": 30000.0, "n_tx": 1, "role": "distributor", "is_seed": true}, {"src": 100000005704413100, "dst": 100000001253557100, "sum_kzt": 27200.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000005933757100, "dst": 100000001253557100, "sum_kzt": 23000.0, "n_tx": 1, "role": "distributor", "is_seed": false}]
   ```
   </details>
-- **tool** `cluster_summary({"cluster_id": 1})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"cluster_id": 1, "n_nodes": 203, "n_seed": 4, "sum_kzt_internal": 51424768.62, "hypothesis": "Possible control layer: 4 candidate upper-level node(s), money from 4 seed(s) converging; 100000002718366100 ranks highest.", "role_counts": {"terminal": 84, "cutoff": 62, "peripheral": 35, "distributor": 12, "coordinator": 4, "transit": 4, "consolidator": 2}, "top_gids": [100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100, 100000008547948100]}
-  ```
-  </details>
 - **tool** `recipients({"gids": [100000001253557100]})` (0.00s)
   <details><summary>result</summary>
 
@@ -284,10 +266,45 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   []
   ```
   </details>
+- **tool** `cluster_summary({"cluster_id": 1})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"cluster_id": 1, "n_nodes": 203, "n_seed": 4, "sum_kzt_internal": 51424768.62, "hypothesis": "Possible control layer: 4 candidate upper-level node(s), money from 4 seed(s) converging; 100000002718366100 ranks highest.", "role_counts": {"terminal": 84, "cutoff": 62, "peripheral": 35, "distributor": 12, "coordinator": 4, "transit": 4, "consolidator": 2}, "top_gids": [100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100, 100000008547948100]}
+  ```
+  </details>
+- **tool** `node_card({"gid": 100000008466579100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000008466579100, "role": "distributor", "role_score": 0.588, "priority_score": 0.7025, "cluster_id": 1, "depth": 2, "is_seed": false, "in_deg": 2, "out_deg": 17, "in_sum_kzt": 36952.0, "out_sum_kzt": 1933000.0, "seed_reach": 8, "seed_kzt_attributed": 6001.311994635919, "evidence": "Fans out to 17 recipients (1.9M KZT) against 2 payers \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
+- **tool** `node_card({"gid": 100000005704413100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000005704413100, "role": "distributor", "role_score": 0.775, "priority_score": 0.603, "cluster_id": 10, "depth": 3, "is_seed": false, "in_deg": 3, "out_deg": 32, "in_sum_kzt": 97834.67, "out_sum_kzt": 1363593.0, "seed_reach": 7, "seed_kzt_attributed": 3248.602779189561, "evidence": "Fans out to 32 recipients (1.4M KZT) against 3 payers \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
+- **tool** `node_card({"gid": 100000005933757100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000005933757100, "role": "distributor", "role_score": 0.8, "priority_score": 0.6085, "cluster_id": 16, "depth": 2, "is_seed": false, "in_deg": 4, "out_deg": 34, "in_sum_kzt": 1246000.0, "out_sum_kzt": 3002628.0, "seed_reach": 7, "seed_kzt_attributed": 3301.3615237872036, "evidence": "Fans out to 34 recipients (3.0M KZT) against 4 payers \u2014 pattern consistent with a distribution layer.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
+- **tool** `node_card({"gid": 100000003589877100})` (0.00s)
+  <details><summary>result</summary>
+
+  ```
+  {"gid": 100000003589877100, "role": "peripheral", "role_score": 0.6, "priority_score": 0.5903, "cluster_id": 1, "depth": 1, "is_seed": false, "in_deg": 2, "out_deg": 6, "in_sum_kzt": 176000.0, "out_sum_kzt": 416129.0, "seed_reach": 9, "seed_kzt_attributed": 26001.249193523592, "evidence": "No role indicators: 2 payers, 6 recipients, 176k KZT in / 416k KZT out.", "secondary_roles": "", "outflow_observed": true}
+  ```
+  </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000001253557100 is a candidate collection/convergence point: five accounts paid it KZT 210,200, including four non-seed accounts classified as distributors or peripheral (100000008466579100, 100000003589877100, 100000005704413100, 100000005933757100). It has no observed outgoing transfers; the card attributes seed reach of 10. (100000001253557100)", "pattern": "multi-payer collection point", "supporting_gids": [100000001253557100, 100000008466579100, 100000003589877100, 100000008680731100, 100000005704413100, 100000005933757100], "alternative_explanation": "A legitimate collection account could receive transfers from multiple contributors and retain funds; salary or merchant settlement activity can also resemble this structure. The available transfer structure alone does not distinguish these explanations. (100000001253557100)", "next_step": "Request the account\u2019s purpose and supporting records for the five incoming transfers, then verify the source and intended use of the funds. (100000001253557100)", "confidence": "medium"}
+  {"summary": "Account 100000001253557100 is a candidate collection point for review: it received 210,200 KZT from five accounts, including seed 100000008680731100 and payers 100000008466579100, 100000003589877100, 100000005704413100 and 100000005933757100. Its card links it to 10 seeds; no onward transfers are observed, so the data does not establish rapid pass-through.", "pattern": "multi-payer collection point", "supporting_gids": [100000001253557100, 100000008680731100, 100000008466579100, 100000003589877100, 100000005704413100, 100000005933757100], "alternative_explanation": "The receipts at 100000001253557100 could reflect legitimate shared expenses or payments for goods or services; the transfer structure alone cannot distinguish those from a collection arrangement.", "next_step": "Request transaction purposes and supporting records for the five incoming payments to 100000001253557100, including their links to the seed accounts.", "confidence": "medium"}
   ```
 
 
@@ -324,17 +341,10 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 9, "n_nodes": 64, "n_seed": 2, "sum_kzt_internal": 10817977.61, "hypothesis": "Signs of a collection hub: money from 2 seed(s) converges on consolidator 100000002838861100 (5% of internal turnover).", "role_counts": {"terminal": 41, "peripheral": 18, "transit": 2, "distributor": 2, "consolidator": 1}, "top_gids": [100000002838861100, 100000002894076100, 100000003158727100, 100000006972210100, 100000003831324100]}
   ```
   </details>
-- **tool** `common_downstream({"gids": [100000005498992100, 100000007747786100], "max_hops": 2})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"gid": 100000002838861100, "role": "consolidator", "role_score": 0.5, "priority_score": 0.9105, "cluster_id": 9, "depth": 1, "is_seed": false, "in_deg": 5, "out_deg": 1, "in_sum_kzt": 554523.95, "out_sum_kzt": 10000.0, "seed_reach": 8, "seed_kzt_attributed": 403408.2613283334, "evidence": "Receives from 5 distinct payers (2 seeds), 555k KZT; forwards 2% \u2014 signs of consolidation. Also matches: terminal.", "secondary_roles": "terminal", "outflow_observed": true}, {"gid": 100000001929088100, "role": "terminal", "role_score": 1.0, "priority_score": 0.66, "cluster_id": 9, "depth": 1, "is_seed": false, "in_deg": 2, "out_deg": 0, "in_sum_kzt": 396010.0, "out_sum_kzt": 0.0, "seed_reach": 2, "seed_kzt_attributed": 396010.0, "evidence": "Receives 396k KZT from 2 payers, forwards 0%; outflow was traced (hop 1) \u2014 possible final recipient.", "secondary_roles": "", "outflow_observed": true}, {"gid": 100000004159526100, "role": "peripheral", "role_score": 0.6, "priority_score": 0.5834, "cluster_id": 16, "depth": 1, "is_seed": false, "in_deg": 4, "out_deg": 4, "in_sum_kzt": 275037.0, "out_sum_kzt": 68000.0, "seed_reach": 8, "seed_kzt_attributed": 108237.77785506367, "evidence": "No rol… [1723 chars]
-  ```
-  </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000002838861100 shows a collection-point pattern: five payers sent 554,523.95 KZT, including two seed accounts, while it sent 10,000 KZT onward to 100000002812641100. Cluster 9 is described as a collection hub; this account is a candidate for review, not proof of wrongdoing.", "pattern": "multi-payer collection point with limited observed onward flow", "supporting_gids": [100000002838861100, 100000005498992100, 100000007747786100, 100000005578559100, 100000005704413100, 100000002812641100], "alternative_explanation": "A legitimate shared collection account, salary account, or merchant settlement account could receive from several payers and retain most funds; the structure and amounts alone do not distinguish these explanations.", "next_step": "Request transaction-purpose and account-ownership documentation for 100000002838861100, then reconcile the five incoming transfers against a legitimate collection or settlement purpose.", "confidence": "high"}
+  {"summary": "Account 100000002838861100 is a candidate collection point: five accounts paid it 554,523.95 KZT, including seeds 100000005498992100 and 100000007747786100. It sent only 10,000 KZT onward, to payer 100000002812641100. It is the sole consolidator in its 64-account cluster; the available results do not establish how quickly funds moved.", "pattern": "multi-payer collection point", "supporting_gids": [100000002838861100, 100000005498992100, 100000007747786100, 100000005578559100, 100000005704413100, 100000002812641100], "alternative_explanation": "The receipts could reflect legitimate collections, and the transfer back to 100000002812641100 could be an adjustment or refund; structure and amounts alone cannot distinguish these.", "next_step": "Request dated transaction history and balance records for 100000002838861100 to establish the timing of receipts and what happened to funds not observed leaving through this network.", "confidence": "medium"}
   ```
 
 
@@ -350,7 +360,7 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"gid": 100000007594394100, "role": "coordinator", "role_score": 0.875, "priority_score": 0.872, "cluster_id": 20, "depth": 2, "is_seed": false, "in_deg": 6, "out_deg": 1, "in_sum_kzt": 395385.0, "out_sum_kzt": 3376312.0, "seed_reach": 9, "seed_kzt_attributed": 7124.321284037761, "evidence": "Money from 9 seeds converges here via 5 collector/transit accounts across 4 clusters \u2014 candidate upper-level node for review. Also matches: consolidator.", "secondary_roles": "consolidator", "outflow_observed": true}
   ```
   </details>
-- **tool** `payers({"gids": [100000007594394100]})` (0.00s)
+- **tool** `payers({"gids": [100000007594394100]})` (0.01s)
   <details><summary>result</summary>
 
   ```
@@ -371,31 +381,17 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 20, "n_nodes": 35, "n_seed": 1, "sum_kzt_internal": 7597620.0, "hypothesis": "Possible control layer: 1 candidate upper-level node(s), money from 1 seed(s) converging; 100000007594394100 ranks highest.", "role_counts": {"terminal": 19, "peripheral": 7, "cutoff": 6, "distributor": 1, "consolidator": 1, "coordinator": 1}, "top_gids": [100000007594394100, 100000005778283100, 100000005782781100, 100000006274203100, 100000003854444100]}
   ```
   </details>
-- **tool** `common_downstream({"gids": [100000007594394100], "max_hops": 2})` (0.00s)
+- **tool** `node_card({"gid": 100000006274203100})` (0.00s)
   <details><summary>result</summary>
 
   ```
-  [{"gid": 100000006274203100, "role": "terminal", "role_score": 0.895, "priority_score": 0.7024, "cluster_id": 20, "depth": 3, "is_seed": false, "in_deg": 2, "out_deg": 3, "in_sum_kzt": 3417512.0, "out_sum_kzt": 72000.0, "seed_reach": 9, "seed_kzt_attributed": 7170.421078326067, "evidence": "Receives 3.4M KZT from 2 payers, forwards 2%; outflow was traced (hop 3) \u2014 possible final recipient.", "secondary_roles": "", "outflow_observed": true}, {"gid": 100000008638859100, "role": "cutoff", "role_score": 0.7, "priority_score": 0.4715, "cluster_id": 20, "depth": 4, "is_seed": false, "in_deg": 1, "out_deg": 0, "in_sum_kzt": 34000.0, "out_sum_kzt": 0.0, "seed_reach": 9, "seed_kzt_attributed": 70.73048192918186, "evidence": "Hop-4 node: onward transfers were not traced (export limit). Receives 34k KZT from 1 payer.", "secondary_roles": "", "outflow_observed": false}, {"gid": 100000005409680100, "role": "peripheral", "role_score": 0.6, "priority_score": 0.2024, "cluster_id": 20, "depth": 0, "is_seed": true, "in_deg": 2, "out_deg": 0, "in_sum_kzt": 55060.0, "out_sum_kzt": 0.0, "seed_reach": 9, "seed_kzt_attributed": 0.0, "evidence": "No role indicators: 2 payers, 0 recipients, 55k KZT in… [1265 chars]
-  ```
-  </details>
-- **tool** `path({"src": 100000004400305100, "dst": 100000007594394100})` (0.01s)
-  <details><summary>result</summary>
-
-  ```
-  {"found": true, "n_hops": 1, "hops": [{"src": 100000004400305100, "dst": 100000007594394100, "sum_kzt": 130000.0, "n_tx": 1}]}
-  ```
-  </details>
-- **tool** `path({"src": 100000005782781100, "dst": 100000007594394100})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"found": true, "n_hops": 1, "hops": [{"src": 100000005782781100, "dst": 100000007594394100, "sum_kzt": 105000.0, "n_tx": 1}]}
+  {"gid": 100000006274203100, "role": "terminal", "role_score": 0.895, "priority_score": 0.7024, "cluster_id": 20, "depth": 3, "is_seed": false, "in_deg": 2, "out_deg": 3, "in_sum_kzt": 3417512.0, "out_sum_kzt": 72000.0, "seed_reach": 9, "seed_kzt_attributed": 7170.421078326067, "evidence": "Receives 3.4M KZT from 2 payers, forwards 2%; outflow was traced (hop 3) \u2014 possible final recipient.", "secondary_roles": "", "outflow_observed": true}
   ```
   </details>
 - **output**
 
   ```json
-  {"summary": "Account 100000007594394100 shows signs of a collection point: six accounts sent it 395,385 KZT, and it sent 3,376,312 KZT in 40 transfers to 100000006274203100. Its card attributes seed reach of 9; the cluster summary identifies it as the highest-ranked candidate upper-level node in cluster 20.", "pattern": "multi-payer collection point with concentrated onward transfers", "supporting_gids": [100000007594394100, 100000004400305100, 100000005782781100, 100000003854444100, 100000000437046100, 100000008165763100, 100000006274203100], "alternative_explanation": "A legitimate pooled account or business settlement account could receive funds from multiple accounts and make repeated transfers to one recipient; the structure and amounts alone do not distinguish that from a concerning collection pattern.", "next_step": "Review the transaction ledger and obtain a documented explanation and supporting records for the 40 transfers totaling 3,376,312 KZT to 100000006274203100.", "confidence": "medium"}
+  {"summary": "Account 100000007594394100 is a candidate collection point: six accounts pay it, including five non-terminal intermediaries, and the network links it to nine seeds across four clusters. It sends 3,376,312 KZT in 40 transfers to 100000006274203100, which also sends 5,000 KZT back. The observed records do not establish how quickly funds moved.", "pattern": "multi-payer collection point", "supporting_gids": [100000007594394100, 100000004400305100, 100000005782781100, 100000003854444100, 100000000437046100, 100000008165763100, 100000006274203100], "alternative_explanation": "The pattern could reflect a legitimate account collecting payments and making repeated settlement transfers to 100000006274203100; structure and amounts alone cannot distinguish that from other purposes.", "next_step": "Request timestamped transaction records and payment purposes for the transfers between 100000007594394100 and 100000006274203100 to test whether incoming funds were promptly forwarded.", "confidence": "medium"}
   ```
 
 
@@ -432,191 +428,10 @@ Every agent action in this run: what it was asked, which deterministic tools it 
   {"cluster_id": 2, "n_nodes": 177, "n_seed": 7, "sum_kzt_internal": 24496075.56, "hypothesis": "Signs of a collection hub: money from 7 seed(s) converges on consolidator 100000004156082100 (2% of internal turnover).", "role_counts": {"terminal": 93, "peripheral": 54, "cutoff": 15, "transit": 11, "consolidator": 3, "distributor": 1}, "top_gids": [100000004156082100, 100000008144528100, 100000000706545100, 100000006518161100, 100000004948177100]}
   ```
   </details>
-- **tool** `common_downstream({"gids": [100000004156082100], "max_hops": 2})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"gid": 100000008144528100, "role": "consolidator", "role_score": 0.5, "priority_score": 0.8224, "cluster_id": 2, "depth": 2, "is_seed": false, "in_deg": 5, "out_deg": 0, "in_sum_kzt": 1068202.6, "out_sum_kzt": 0.0, "seed_reach": 7, "seed_kzt_attributed": 35832.7118523855, "evidence": "Receives from 5 distinct payers, 1.1M KZT; forwards 0% \u2014 signs of consolidation. Also matches: terminal.", "secondary_roles": "terminal", "outflow_observed": true}, {"gid": 100000006518161100, "role": "transit", "role_score": 1.0, "priority_score": 0.7337, "cluster_id": 2, "depth": 1, "is_seed": false, "in_deg": 3, "out_deg": 2, "in_sum_kzt": 594200.0, "out_sum_kzt": 595899.0, "seed_reach": 7, "seed_kzt_attributed": 554162.5129382443, "evidence": "In 594k KZT / out 596k KZT (ratio 1.00), 100% forwarded within 2 days \u2014 pattern consistent with transit.", "secondary_roles": "", "outflow_observed": true}, {"gid": 100000008346837100, "role": "consolidator", "role_score": 0.9, "priority_score": 0.7318, "cluster_id": 13, "depth": 2, "is_seed": false, "in_deg": 9, "out_deg": 25, "in_sum_kzt": 254359.0, "out_sum_kzt": 1258643.0, "seed_reach": 7, "seed_kzt_attributed": 13774.653635723107, "evidence"… [10910 chars]
-  ```
-  </details>
 - **output**
 
   ```json
-  {"summary": "100000004156082100 is a non-seed consolidator candidate in cluster 2: it receives 377,366 KZT from five payers, including seed 100000008418835100, then sends 2,319,556 KZT to 26 recipients. Cluster evidence describes a collection-hub pattern involving seven seeds; this account merits review for high-volume fan-out, not a conclusion about purpose.", "pattern": "multi-payer collection point with broad fan-out", "supporting_gids": [100000004156082100, 100000008418835100, 100000004527381100, 100000003221384100, 100000000795129100, 100000006518161100], "alternative_explanation": "A legitimate account used for business collections, payroll or supplier payments could receive from several parties and make many outgoing transfers; the graph and amounts alone cannot distinguish that from a collection point.", "next_step": "Obtain transaction-level timestamps, payment references and account-purpose documentation, then reconcile the incoming funds to the 26 outgoing recipients, prioritizing the largest transfers such as 511,200 KZT to 100000003221384100.", "confidence": "medium"}
-  ```
-
-
-### investigator — investigate 100000001303311100
-
-*model output accepted — ok*
-
-- **plan** build a case dossier for one priority account
-- **tool** `node_card({"gid": 100000001303311100})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"gid": 100000001303311100, "role": "coordinator", "role_score": 0.625, "priority_score": 0.85, "cluster_id": 1, "depth": 3, "is_seed": false, "in_deg": 5, "out_deg": 0, "in_sum_kzt": 1324000.0, "out_sum_kzt": 0.0, "seed_reach": 9, "seed_kzt_attributed": 4292.490607297293, "evidence": "Money from 9 seeds converges here via 3 collector/transit accounts across 1 clusters \u2014 candidate upper-level node for review. Also matches: consolidator, terminal.", "secondary_roles": "consolidator;terminal", "outflow_observed": true}
-  ```
-  </details>
-- **tool** `payers({"gids": [100000001303311100]})` (0.01s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000008758168100, "dst": 100000001303311100, "sum_kzt": 600000.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008759857100, "dst": 100000001303311100, "sum_kzt": 298000.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008710791100, "dst": 100000001303311100, "sum_kzt": 250000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008743913100, "dst": 100000001303311100, "sum_kzt": 135000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008742053100, "dst": 100000001303311100, "sum_kzt": 41000.0, "n_tx": 1, "role": "distributor", "is_seed": false}]
-  ```
-  </details>
-- **tool** `common_downstream({"gids": [100000001303311100], "max_hops": 3})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  []
-  ```
-  </details>
-- **tool** `cluster_summary({"cluster_id": 1})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"cluster_id": 1, "n_nodes": 203, "n_seed": 4, "sum_kzt_internal": 51424768.62, "hypothesis": "Possible control layer: 4 candidate upper-level node(s), money from 4 seed(s) converging; 100000002718366100 ranks highest.", "role_counts": {"terminal": 84, "cutoff": 62, "peripheral": 35, "distributor": 12, "coordinator": 4, "transit": 4, "consolidator": 2}, "top_gids": [100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100, 100000008547948100]}
-  ```
-  </details>
-- **tool** `path({"src": 100000008758168100, "dst": 100000001303311100})` (0.01s)
-  <details><summary>result</summary>
-
-  ```
-  {"found": true, "n_hops": 1, "hops": [{"src": 100000008758168100, "dst": 100000001303311100, "sum_kzt": 600000.0, "n_tx": 1}]}
-  ```
-  </details>
-- **output**
-
-  ```json
-  {"summary": "Account 100000001303311100 is a non-seed coordinator in cluster 1, with five incoming transfers totaling 1,324,000 KZT and no observed outgoing transfers. Its recorded seed reach of 9 and role support make it a candidate upper-level collection point for review; the observed inflows end here in the available network view.", "pattern": "multi-payer terminal collection point", "supporting_gids": [100000001303311100, 100000008758168100, 100000008759857100, 100000008710791100, 100000008743913100, 100000008742053100], "alternative_explanation": "A legitimate salary, settlement, or other collection account could also receive transfers from multiple accounts and retain the funds; the structure and amounts alone do not distinguish this.", "next_step": "Request account statements and transaction purpose documentation for the five incoming transfers, then reconcile the counterparties and any activity outside this network view.", "confidence": "medium"}
-  ```
-
-
-### investigator — investigate 100000002398779100
-
-*model output accepted — ok*
-
-- **plan** build a case dossier for one priority account
-- **tool** `node_card({"gid": 100000002398779100})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"gid": 100000002398779100, "role": "consolidator", "role_score": 1.0, "priority_score": 0.8409, "cluster_id": 0, "depth": 2, "is_seed": false, "in_deg": 13, "out_deg": 1, "in_sum_kzt": 1095690.0, "out_sum_kzt": 66000.0, "seed_reach": 8, "seed_kzt_attributed": 30674.117224821483, "evidence": "Receives from 13 distinct payers, 1.1M KZT; forwards 6% \u2014 signs of consolidation. Also matches: terminal.", "secondary_roles": "terminal", "outflow_observed": true}
-  ```
-  </details>
-- **tool** `payers({"gids": [100000002398779100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000004486525100, "dst": 100000002398779100, "sum_kzt": 254955.0, "n_tx": 2, "role": "consolidator", "is_seed": false}, {"src": 100000005634552100, "dst": 100000002398779100, "sum_kzt": 247000.0, "n_tx": 2, "role": "peripheral", "is_seed": false}, {"src": 100000004077081100, "dst": 100000002398779100, "sum_kzt": 195000.0, "n_tx": 2, "role": "peripheral", "is_seed": false}, {"src": 100000004351795100, "dst": 100000002398779100, "sum_kzt": 87100.0, "n_tx": 5, "role": "distributor", "is_seed": false}, {"src": 100000005910114100, "dst": 100000002398779100, "sum_kzt": 74910.0, "n_tx": 2, "role": "distributor", "is_seed": false}, {"src": 100000004070318100, "dst": 100000002398779100, "sum_kzt": 61568.0, "n_tx": 3, "role": "distributor", "is_seed": false}, {"src": 100000002645993100, "dst": 100000002398779100, "sum_kzt": 54150.0, "n_tx": 5, "role": "peripheral", "is_seed": false}, {"src": 100000008223661100, "dst": 100000002398779100, "sum_kzt": 50007.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000007593823100, "dst": 100000002398779100, "sum_kzt": 21000.0, "n_tx": 2, "role": "distributor", "is_seed": false}, {"src": 100000000089154100, "dst": 100000002398… [1659 chars]
-  ```
-  </details>
-- **tool** `recipients({"gids": [100000002398779100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000002398779100, "dst": 100000008576243100, "sum_kzt": 66000.0, "n_tx": 3, "role": "terminal", "is_seed": false}]
-  ```
-  </details>
-- **tool** `cluster_summary({"cluster_id": 0})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"cluster_id": 0, "n_nodes": 209, "n_seed": 1, "sum_kzt_internal": 20156784.24, "hypothesis": "Signs of a collection hub: money from 1 seed(s) converges on consolidator 100000002398779100 (5% of internal turnover).", "role_counts": {"terminal": 95, "cutoff": 44, "peripheral": 38, "consolidator": 14, "transit": 10, "distributor": 8}, "top_gids": [100000002398779100, 100000004299488100, 100000007055802100, 100000008244300100, 100000008111003100]}
-  ```
-  </details>
-- **tool** `common_downstream({"gids": [100000002398779100], "max_hops": 2})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"gid": 100000008576243100, "role": "terminal", "role_score": 1.0, "priority_score": 0.637, "cluster_id": 0, "depth": 3, "is_seed": false, "in_deg": 2, "out_deg": 0, "in_sum_kzt": 82920.0, "out_sum_kzt": 0.0, "seed_reach": 8, "seed_kzt_attributed": 1876.677499979615, "evidence": "Receives 83k KZT from 2 payers, forwards 0%; outflow was traced (hop 3) \u2014 possible final recipient.", "secondary_roles": "", "outflow_observed": true}]
-  ```
-  </details>
-- **output**
-
-  ```json
-  {"summary": "Account 100000002398779100 shows signs of a collection/consolidation point: it receives 1,095,690 KZT from 13 payers and sends 66,000 KZT to one recipient, 100000008576243100. It is non-seed, at depth 2, and the cluster summary identifies it as a consolidator in a collection-hub hypothesis; these are candidate-for-review signals, not proof of purpose.", "pattern": "multi-payer collection point", "supporting_gids": [100000002398779100, 100000004486525100, 100000005634552100, 100000004077081100, 100000004351795100, 100000008576243100], "alternative_explanation": "A legitimate account collecting payments or settling with suppliers could also receive from many accounts and retain most funds; the transfer structure and amounts alone do not establish the reason.", "next_step": "Request transaction purpose and supporting records for the incoming transfers to 100000002398779100 and its 66,000 KZT payment to 100000008576243100, then reconcile them against the stated activity.", "confidence": "high"}
-  ```
-
-
-### investigator — investigate 100000001282143100
-
-*model output accepted — ok*
-
-- **plan** build a case dossier for one priority account
-- **tool** `node_card({"gid": 100000001282143100})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"gid": 100000001282143100, "role": "coordinator", "role_score": 0.875, "priority_score": 0.8311, "cluster_id": 1, "depth": 3, "is_seed": false, "in_deg": 5, "out_deg": 0, "in_sum_kzt": 1700000.0, "out_sum_kzt": 0.0, "seed_reach": 10, "seed_kzt_attributed": 857.5447100928754, "evidence": "Money from 10 seeds converges here via 5 collector/transit accounts across 2 clusters \u2014 candidate upper-level node for review. Also matches: consolidator, terminal.", "secondary_roles": "consolidator;terminal", "outflow_observed": true}
-  ```
-  </details>
-- **tool** `payers({"gids": [100000001282143100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000005242320100, "dst": 100000001282143100, "sum_kzt": 600000.0, "n_tx": 2, "role": "distributor", "is_seed": false}, {"src": 100000008742053100, "dst": 100000001282143100, "sum_kzt": 480000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008710791100, "dst": 100000001282143100, "sum_kzt": 440000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008710843100, "dst": 100000001282143100, "sum_kzt": 160000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008512827100, "dst": 100000001282143100, "sum_kzt": 20000.0, "n_tx": 1, "role": "distributor", "is_seed": false}]
-  ```
-  </details>
-- **tool** `cluster_summary({"cluster_id": 1})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"cluster_id": 1, "n_nodes": 203, "n_seed": 4, "sum_kzt_internal": 51424768.62, "hypothesis": "Possible control layer: 4 candidate upper-level node(s), money from 4 seed(s) converging; 100000002718366100 ranks highest.", "role_counts": {"terminal": 84, "cutoff": 62, "peripheral": 35, "distributor": 12, "coordinator": 4, "transit": 4, "consolidator": 2}, "top_gids": [100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100, 100000008547948100]}
-  ```
-  </details>
-- **tool** `payers({"gids": [100000005242320100, 100000008742053100, 100000008710791100, 100000008710843100, 100000008512827100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000001287955100, "dst": 100000005242320100, "sum_kzt": 185700.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000002748180100, "dst": 100000005242320100, "sum_kzt": 180000.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008517538100, "dst": 100000008710791100, "sum_kzt": 115000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000005527892100, "dst": 100000008512827100, "sum_kzt": 54510.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000005527892100, "dst": 100000008710791100, "sum_kzt": 54510.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000000640800100, "dst": 100000008512827100, "sum_kzt": 43439.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008489922100, "dst": 100000008710843100, "sum_kzt": 18200.0, "n_tx": 2, "role": "distributor", "is_seed": false}, {"src": 100000007639767100, "dst": 100000008710843100, "sum_kzt": 15744.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000008489922100, "dst": 100000008710791100, "sum_kzt": 12000.0, "n_tx": 1, "role": "distributor", "is_seed": false}, {"src": 100000008517538100, "dst": 100000008512827… [1406 chars]
-  ```
-  </details>
-- **output**
-
-  ```json
-  {"summary": "Account 100000001282143100 is a terminal-style collection point: five distributor accounts (100000005242320100, 100000008742053100, 100000008710791100, 100000008710843100, 100000008512827100) paid it 1.7 million KZT, and no outgoing transfers are observed. Its card reports reach from 10 seeds; this is a candidate upper-level node for review, not proof of coordination.", "pattern": "multi-payer terminal collection point", "supporting_gids": [100000001282143100, 100000005242320100, 100000008742053100, 100000008710791100, 100000008710843100, 100000008512827100], "alternative_explanation": "A legitimate account receiving pooled payments or merchant proceeds could show the same multi-payer, no-observed-outflow structure; the available transfer structure does not establish purpose.", "next_step": "Request the account\u2019s transaction-purpose and source-of-funds documentation, then reconcile it against the five incoming payer flows.", "confidence": "medium"}
-  ```
-
-
-### investigator — investigate 100000008144528100
-
-*model output accepted — ok*
-
-- **plan** build a case dossier for one priority account
-- **tool** `node_card({"gid": 100000008144528100})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"gid": 100000008144528100, "role": "consolidator", "role_score": 0.5, "priority_score": 0.8224, "cluster_id": 2, "depth": 2, "is_seed": false, "in_deg": 5, "out_deg": 0, "in_sum_kzt": 1068202.6, "out_sum_kzt": 0.0, "seed_reach": 7, "seed_kzt_attributed": 35832.7118523855, "evidence": "Receives from 5 distinct payers, 1.1M KZT; forwards 0% \u2014 signs of consolidation. Also matches: terminal.", "secondary_roles": "terminal", "outflow_observed": true}
-  ```
-  </details>
-- **tool** `payers({"gids": [100000008144528100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  [{"src": 100000006579678100, "dst": 100000008144528100, "sum_kzt": 1024400.0, "n_tx": 9, "role": "peripheral", "is_seed": false}, {"src": 100000005339662100, "dst": 100000008144528100, "sum_kzt": 27860.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000005287097100, "dst": 100000008144528100, "sum_kzt": 5500.0, "n_tx": 1, "role": "peripheral", "is_seed": false}, {"src": 100000005619339100, "dst": 100000008144528100, "sum_kzt": 5442.6, "n_tx": 1, "role": "transit", "is_seed": false}, {"src": 100000001049200100, "dst": 100000008144528100, "sum_kzt": 5000.0, "n_tx": 1, "role": "peripheral", "is_seed": false}]
-  ```
-  </details>
-- **tool** `recipients({"gids": [100000008144528100]})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  []
-  ```
-  </details>
-- **tool** `cluster_summary({"cluster_id": 2})` (0.00s)
-  <details><summary>result</summary>
-
-  ```
-  {"cluster_id": 2, "n_nodes": 177, "n_seed": 7, "sum_kzt_internal": 24496075.56, "hypothesis": "Signs of a collection hub: money from 7 seed(s) converges on consolidator 100000004156082100 (2% of internal turnover).", "role_counts": {"terminal": 93, "peripheral": 54, "cutoff": 15, "transit": 11, "consolidator": 3, "distributor": 1}, "top_gids": [100000004156082100, 100000008144528100, 100000000706545100, 100000006518161100, 100000004948177100]}
-  ```
-  </details>
-- **output**
-
-  ```json
-  {"summary": "Account 100000008144528100 is a non-seed terminal in cluster 2, receiving 1,068,202.6 KZT from five payers and showing no outgoing transfers. This is a pattern consistent with a multi-payer collection point and explains its review priority; cluster 2 is described as a collection-hub hypothesis, but its stated hub is a different account (100000004156082100).", "pattern": "multi-payer terminal collection point", "supporting_gids": [100000008144528100, 100000006579678100, 100000005339662100, 100000005287097100, 100000005619339100, 100000001049200100, 100000004156082100], "alternative_explanation": "A salary or other legitimate account receiving several payments and retaining funds could show the same structure; the transfer data alone does not establish the purpose of the inflows.", "next_step": "Request supporting context for the five incoming payments to 100000008144528100, especially the repeated 1,024,400 KZT from 100000006579678100, and verify the account holder\u2019s documented source and purpose of funds.", "confidence": "medium"}
+  {"summary": "Account 100000004156082100 is a candidate for review: it receives 377,366 KZT from five payers, including seed 100000008418835100, and sends 2,319,556 KZT to 26 recipients, including 100000003221384100. Its cluster contains seven seeds and identifies it as a possible collection hub; the larger outflow cannot be attributed to the observed inflows alone.", "pattern": "multi-payer collection and distribution", "supporting_gids": [100000004156082100, 100000008418835100, 100000004527381100, 100000003221384100], "alternative_explanation": "Account 100000004156082100 could be making ordinary payments to multiple recipients from funds outside the observed incoming transfers; the network alone does not establish their purpose.", "next_step": "Request timestamped transaction history and source-of-funds documentation for 100000004156082100 to test whether incoming funds preceded the outgoing payments.", "confidence": "medium"}
   ```
 
 
@@ -628,7 +443,7 @@ Every agent action in this run: what it was asked, which deterministic tools it 
 - **output**
 
   ```json
-  {"artifacts": [{"gids": [100000004015047100, 100000003115284100, 100000008165763100, 100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100], "concern": "These coordinator-ranked accounts are not marked at the traversal frontier, so the known unknown-onward-flow artifact does not directly explain their zero or low observed outflow. However, because collection follows outgoing transfers only from fixed starting accounts, their observed inflows and seed reach omit incoming funds and connections outside that sampled path; the coordinator interpretation is conditional on the selected seeds, not a complete network view.", "severity": "medium"}, {"gids": [100000002957306100, 100000002894076100, 100000001924185100, 100000003404627100, 100000004105288100, 100000001072022100, 100000002605548100, 100000005778283100, 100000003158727100, 100000005432267100], "concern": "These terminal-ranked accounts show zero observed outflow, but that is not evidence of zero actual onward flow: transfers below 5,000 KZT are excluded, and transfers to destinations not reached by the outgoing-only traversal are absent. Their apparent terminal pattern is therefore especially sensitive to… [4675 chars]
+  {"artifacts": [{"gids": [100000004015047100, 100000002718366100, 100000001253557100, 100000001303311100, 100000001282143100], "concern": "These highly ranked coordinator candidates forward 8% or 0% of observed inflow. A one-month, outgoing-only export can make retained balances or transfers outside July look like network endpoints; seed reach establishes a possible path, not coordinated behaviour.", "severity": "high"}, {"gids": [100000002957306100, 100000002894076100, 100000001924185100, 100000003404627100, 100000004105288100, 100000001072022100, 100000002605548100, 100000005778283100, 100000003158727100, 100000005432267100], "concern": "These terminal candidates have no observed onward transfers, but none is marked at the depth-four frontier. Their zero outflow is therefore not explained by the stated frontier cutoff; it could still reflect ordinary receipt, transfers after July, or onward payments below 5,000 KZT. Check depth and export coverage before treating terminal status as behavioural evidence.", "severity": "medium"}, {"gids": [100000007594394100, 100000004156082100, 100000008547948100, 100000002224132100], "concern": "Observed outflow substantially exceeds observed infl… [4333 chars]
   ```
 
 

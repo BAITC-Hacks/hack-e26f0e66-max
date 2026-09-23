@@ -3,13 +3,22 @@
 Reads `output_files/` only — it never recomputes, so it opens instantly and
 shows exactly what the exported CSVs contain.
 
-The layout follows the analyst's actual question order:
+Layout follows the analyst's question order:
 
-    Start here  ->  Who to review first  ->  Account detail  ->  everything else
+    Start here -> Who to review first -> Account detail -> everything else
 
-Design rule for this file: **nothing on screen without a label that says what
-it is and what to do with it.** A network map with no reading guide is a
-decoration; a table with no explanation of its ranking is noise.
+Two rules this file keeps:
+
+* **Nothing on screen without a label saying what it is and what to do with
+  it.** A network map with no reading guide is a decoration.
+* **Every panel carries its content from the moment the page is built.** No
+  component waits for a load event to fill in, because a component that starts
+  empty is a component that stays empty when anything goes wrong.
+
+Three languages. Russian is the default — the analyst this is built for works
+in a Kazakhstani bank. Switching re-localizes every string in place, including
+the evidence sentences, which are rebuilt from each node's rule trace rather
+than translated, so the figures cannot drift between languages.
 """
 
 from __future__ import annotations
@@ -30,62 +39,94 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from moneygraph.io import load_config          # noqa: E402
+from moneygraph.i18n import (          # noqa: E402
+    DEFAULT_LANG, LANGUAGES, TAB_GUIDE, evidence_from_trace, fmt_money,
+    hypothesis_from_members, machine_translation_notice, role_meaning,
+    role_name, t, why_from_row)
+from moneygraph.io import load_config  # noqa: E402
 
 CFG = load_config(ROOT / "config.yaml")
 OUT = ROOT / CFG["paths"]["outputs"]
 VIEW = CFG["viewer"]
 ROLE_COLORS = VIEW["role_colors"]
-
-ROLE_MEANING = {
-    "coordinator": "Collects from other collection points — candidate upper level",
-    "consolidator": "Money from many separate payers converges here",
-    "distributor": "Fans money out to many recipients",
-    "transit": "Money arrives and moves on, roughly in equals out",
-    "terminal": "Money arrives and stays (outflow was traced)",
-    "cutoff": "Onward flow was never traced — the export stopped here",
-    "peripheral": "No role indicators detected",
-}
+WEIGHTS = CFG["priority"]["weights"]
+MAPS = OUT / "_maps"
 
 CSS = """
-.gradio-container { max-width: 1320px !important; }
-.hero { padding: 20px 24px; border-radius: 14px; border: 1px solid var(--border-color-primary);
-        background: var(--block-background-fill); margin-bottom: 6px; }
-.hero h2 { margin: 0 0 6px 0; font-size: 1.35rem; }
-.hero p  { margin: 0; opacity: .82; line-height: 1.55; }
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.kpi { text-align: center; padding: 16px 10px; border-radius: 12px;
+.gradio-container { max-width: 1340px !important; }
+
+/* --- tab bar: this is the primary navigation, so it reads as navigation --- */
+.tab-nav, .tabs > .tab-nav { gap: 2px !important;
+    border-bottom: 2px solid var(--border-color-primary) !important;
+    margin-bottom: 24px !important; flex-wrap: wrap; }
+.tab-nav button, .tabs > .tab-nav > button {
+    font-size: 1.05rem !important; font-weight: 650 !important;
+    padding: 14px 21px !important; border: none !important;
+    border-bottom: 3px solid transparent !important;
+    border-radius: 9px 9px 0 0 !important; opacity: .6;
+    transition: opacity .15s ease, background .15s ease; }
+.tab-nav button:hover { opacity: .92; background: var(--block-background-fill) !important; }
+.tab-nav button.selected, .tabs > .tab-nav > button.selected {
+    opacity: 1 !important; font-weight: 780 !important;
+    border-bottom: 3px solid var(--body-text-color) !important;
+    background: var(--block-background-fill) !important; }
+
+.langbar { display: flex; justify-content: flex-end; align-items: center;
+            flex-wrap: nowrap !important; margin-bottom: 2px; }
+/* All three languages stay on a single row, never stacked. */
+.langbar .wrap, .langbar fieldset, .langbar .form {
+    display: flex !important; flex-direction: row !important;
+    flex-wrap: nowrap !important; gap: 4px; align-items: center; }
+.langbar label { white-space: nowrap; margin: 0 !important; }
+.mtbar { border-left: 3px solid #c9a227; background: rgba(201,162,39,.10);
+         padding: 12px 16px; border-radius: 0 9px 9px 0; margin: 8px 0 16px 0;
+         font-size: .9rem; line-height: 1.6; }
+.hero { padding: 22px 26px; border-radius: 14px; border: 1px solid var(--border-color-primary);
+        background: var(--block-background-fill); margin: 4px 0 18px 0; }
+.hero h2 { margin: 0 0 8px 0; font-size: 1.4rem; }
+.hero p  { margin: 0; opacity: .82; line-height: 1.6; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+        gap: 14px; margin: 8px 0 24px 0; }
+.kpi { text-align: center; padding: 17px 11px; border-radius: 12px;
        background: var(--block-background-fill); border: 1px solid var(--border-color-primary); }
-.kpi .v { font-size: 1.9rem; font-weight: 640; line-height: 1.15; }
-.kpi .l { font-size: .74rem; opacity: .7; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
-.kpi .s { font-size: .74rem; opacity: .55; margin-top: 2px; }
-.note { border-left: 3px solid var(--color-accent, #888); padding: 10px 14px; margin: 10px 0;
-        background: var(--block-background-fill); border-radius: 0 8px 8px 0;
-        font-size: .9rem; line-height: 1.55; }
-.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 6px 18px;
-          padding: 14px 16px; border-radius: 12px; border: 1px solid var(--border-color-primary);
-          background: var(--block-background-fill); font-size: .86rem; }
+.kpi .v { font-size: 1.85rem; font-weight: 650; line-height: 1.15; }
+.kpi .l { font-size: .74rem; opacity: .7; text-transform: uppercase;
+          letter-spacing: .05em; margin-top: 5px; }
+.kpi .s { font-size: .74rem; opacity: .55; margin-top: 3px; }
+.note { border-left: 3px solid var(--color-accent, #888); padding: 13px 17px; margin: 16px 0;
+        background: var(--block-background-fill); border-radius: 0 9px 9px 0;
+        font-size: .91rem; line-height: 1.6; }
+.warnbox { border-left: 3px solid #d98324; background: rgba(217,131,36,.09);
+           padding: 13px 17px; border-radius: 0 9px 9px 0; margin: 16px 0;
+           font-size: .91rem; line-height: 1.6; }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(252px, 1fr));
+          gap: 10px 24px; padding: 18px 20px; margin: 12px 0 20px 0; border-radius: 12px;
+          border: 1px solid var(--border-color-primary);
+          background: var(--block-background-fill); font-size: .87rem; }
 .legend .row { display: flex; align-items: center; gap: 9px; }
 .legend .sw { width: 13px; height: 13px; border-radius: 50%; flex: none; }
 .legend .t  { opacity: .78; }
-.legend h4 { grid-column: 1/-1; margin: 0 0 2px 0; font-size: .78rem; opacity: .6;
+.legend h4 { grid-column: 1/-1; margin: 2px 0; font-size: .77rem; opacity: .6;
              text-transform: uppercase; letter-spacing: .05em; }
-.pill { display:inline-block; padding: 2px 10px; border-radius: 999px; font-size: .78rem;
-        font-weight: 600; color: #fff; }
-.facts { width: 100%; border-collapse: collapse; font-size: .92rem; }
-.facts td { padding: 7px 4px; border-bottom: 1px solid var(--border-color-primary); }
-.facts td:first-child { opacity: .62; width: 46%; }
+.pill { display:inline-block; padding: 3px 12px; border-radius: 999px;
+        font-size: .8rem; font-weight: 600; color: #fff; }
+.facts { width: 100%; border-collapse: collapse; font-size: .93rem; margin-bottom: 8px; }
+.facts td { padding: 8px 4px; border-bottom: 1px solid var(--border-color-primary); }
+.facts td:first-child { opacity: .62; width: 48%; }
 .facts td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-.bars { display: flex; flex-direction: column; gap: 9px; padding: 4px 2px; }
-.bar { display: grid; grid-template-columns: 124px 1fr 96px; align-items: center; gap: 12px; }
+
+/* --- room around the network maps --------------------------------------- */
+.mapwrap { margin: 20px 0 30px 0; }
+.mapwrap iframe { display: block; }
+
+.bars { display: flex; flex-direction: column; gap: 10px; padding: 6px 2px 14px 2px; }
+.bar { display: grid; grid-template-columns: 158px 1fr 96px; align-items: center; gap: 13px; }
 .bl { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
 .bl .sw { width: 11px; height: 11px; border-radius: 50%; flex: none; }
-.bt { height: 20px; background: var(--border-color-primary); border-radius: 5px; overflow: hidden; }
+.bt { height: 21px; background: var(--border-color-primary); border-radius: 5px; overflow: hidden; }
 .bf { height: 100%; border-radius: 5px; transition: width .4s ease; }
 .bn { font-size: .9rem; text-align: right; font-variant-numeric: tabular-nums; }
 .bn .bp { opacity: .5; font-size: .78rem; margin-left: 7px; }
-.warnbox { border-left: 3px solid #d98324; background: rgba(217,131,36,.08);
-           padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 10px 0; font-size: .9rem; }
 """
 
 
@@ -113,6 +154,7 @@ class Store:
         self.dossiers = self._json("dossiers.json", key_int=True)
         self.ingest = self._json("ingest_report.json")
         self.trace = self._json("run_trace.json")
+        self._traces: dict[int, dict] = {}
 
     def _json(self, name: str, key_int: bool = False):
         p = OUT / name
@@ -129,36 +171,38 @@ class Store:
         return p.read_text(encoding="utf-8") if p.exists() else fallback
 
     def rule_trace(self, gid: int) -> dict:
+        if gid in self._traces:
+            return self._traces[gid]
         if gid not in self.f.index:
             return {}
         try:
-            return json.loads(self.f.at[gid, "rule_trace"])
+            d = json.loads(self.f.at[gid, "rule_trace"])
         except (TypeError, ValueError):
-            return {}
+            d = {}
+        self._traces[gid] = d
+        return d
+
+    def evidence(self, gid: int, lang: str) -> str:
+        """Localized evidence, rebuilt from the rule trace."""
+        if gid not in self.f.index:
+            return ""
+        row = self.f.loc[gid].to_dict()
+        tr = self.rule_trace(gid)
+        if not tr:
+            return str(row.get("evidence", ""))
+        return evidence_from_trace(tr, row, lang,
+                                   limit=int(CFG["evidence"]["max_chars"]))
 
 
 S = Store()
 
 
 # ===========================================================================
-# formatting helpers
+# formatting
 # ===========================================================================
 
-def kzt(x, unit: bool = False) -> str:
-    try:
-        x = float(x)
-    except (TypeError, ValueError):
-        return "n/a"
-    if pd.isna(x):
-        return "n/a"
-    suffix = " KZT" if unit else ""
-    if abs(x) >= 1e9:
-        return f"{x / 1e9:.2f}B{suffix}"
-    if abs(x) >= 1e6:
-        return f"{x / 1e6:.1f}M{suffix}"
-    if abs(x) >= 1e3:
-        return f"{x / 1e3:.0f}k{suffix}"
-    return f"{x:,.0f}{suffix}"
+def kzt(x, lang: str = DEFAULT_LANG) -> str:
+    return fmt_money(x, lang)
 
 
 def kpi(value: str, label: str, sub: str = "") -> str:
@@ -167,138 +211,182 @@ def kpi(value: str, label: str, sub: str = "") -> str:
             + (f"<div class='s'>{sub}</div>" if sub else "") + "</div>")
 
 
-def kpis(cells: list[str]) -> str:
-    return "<div class='kpis'>" + "".join(cells) + "</div>"
-
-
 def note(text: str) -> str:
     return f"<div class='note'>{text}</div>"
 
 
-def pill(role: str) -> str:
+def warn(text: str) -> str:
+    return f"<div class='warnbox'>{text}</div>"
+
+
+def mt_banner(lang: str) -> str:
+    """Disclosure that a language's strings are machine translated.
+
+    Empty for reviewed languages, so the same component can carry it and simply
+    disappear rather than needing to be shown and hidden.
+    """
+    notice = machine_translation_notice(lang)
+    return f"<div class='mtbar'>{notice}</div>" if notice else ""
+
+
+def hero(title: str, body: str) -> str:
+    return f"<div class='hero'><h2>{title}</h2><p>{body}</p></div>"
+
+
+def pill(role: str, lang: str) -> str:
     return (f"<span class='pill' style='background:{ROLE_COLORS.get(role, '#888')}'>"
-            f"{role}</span>")
+            f"{role_name(role, lang)}</span>")
 
 
-def legend_html() -> str:
+def legend_html(lang: str) -> str:
     rows = "".join(
         f"<div class='row'><span class='sw' style='background:{c}'></span>"
-        f"<b>{r}</b><span class='t'>— {ROLE_MEANING.get(r, '')}</span></div>"
+        f"<b>{role_name(r, lang)}</b><span class='t'>— {role_meaning(r, lang)}</span></div>"
         for r, c in ROLE_COLORS.items())
-    shapes = (
-        "<h4>Shapes and lines</h4>"
-        "<div class='row'><span class='t'><b>◆ diamond</b> — one of the 81 known "
-        "seed accounts</span></div>"
-        "<div class='row'><span class='t'><b>● circle</b> — an account the trace "
-        "reached</span></div>"
-        "<div class='row'><span class='t'><b>dashed red ring</b> — the export "
-        "stopped here; onward flow unknown</span></div>"
-        "<div class='row'><span class='t'><b>arrow</b> — direction the money "
-        "moved</span></div>"
-        "<div class='row'><span class='t'><b>thicker line</b> — larger amount "
-        "(log scale)</span></div>"
-        "<div class='row'><span class='t'><b>bigger circle</b> — higher review "
-        "priority</span></div>")
-    return f"<div class='legend'><h4>What the colours mean</h4>{rows}{shapes}</div>"
+    shapes = f"<h4>{t('legend.shapes', lang)}</h4>" + "".join(
+        f"<div class='row'><span class='t'>{t(k, lang)}</span></div>"
+        for k in ("legend.diamond", "legend.circle", "legend.dashed",
+                  "legend.arrow", "legend.width", "legend.size"))
+    return (f"<div class='legend'><h4>{t('legend.colors', lang)}</h4>"
+            f"{rows}{shapes}</div>")
 
 
-READING_GUIDE = note(
-    "<b>How to read this map.</b> Money flows along the arrows, away from the "
-    "known seed accounts and up towards whoever collects it. The account you "
-    "searched for is outlined in black. <b>Hover any node</b> for its role, "
-    "amounts and the one-line evidence; <b>hover any arrow</b> for the amount "
-    "and number of transfers. Drag to pan, scroll to zoom, drag a node to move it."
-)
+def role_bars(lang: str) -> str:
+    """The role distribution, drawn in CSS.
+
+    Deliberately not a charting library: this is one bar chart, and a plotting
+    dependency renders it through a JavaScript bundle whose version has to agree
+    with the front end's. Hand-drawn, it cannot fail to display.
+    """
+    counts = S.nodes["role"].value_counts()
+    total, widest = int(counts.sum()), int(counts.max() or 1)
+    rows = [
+        f"<div class='bar'><div class='bl'><span class='sw' style='background:"
+        f"{ROLE_COLORS.get(role, '#888')}'></span>{role_name(role, lang)}</div>"
+        f"<div class='bt' title='{role_meaning(role, lang)}'><div class='bf' "
+        f"style='width:{max(1.2, 100 * n / widest):.1f}%;background:"
+        f"{ROLE_COLORS.get(role, '#888')}'></div></div>"
+        f"<div class='bn'>{n:,}<span class='bp'>{100 * n / total:.0f}%</span></div>"
+        f"</div>".replace(",", " ")
+        for role, n in counts.items()]
+    return "<div class='bars'>" + "".join(rows) + "</div>"
 
 
 # ===========================================================================
-# network rendering
+# network maps
 # ===========================================================================
 
-def _network(height: str = "540px"):
+def _layout(gids: list[int], edges: pd.DataFrame) -> dict[int, tuple[float, float]]:
+    """Pre-compute node positions rather than letting the browser settle them.
+
+    vis.js packs a small graph into a tight ball, which is what made the group
+    maps unreadable. A seeded spring layout, scaled up, spreads the nodes — and
+    because the seed is fixed, puts them in the same place on every run, so a
+    demo can be rehearsed.
+    """
+    import networkx as nx
+
+    g = nx.Graph()
+    g.add_nodes_from(gids)
+    keep = set(gids)
+    for a, b in zip(edges["src"], edges["dst"]):
+        if a in keep and b in keep:
+            g.add_edge(int(a), int(b))
+    n = max(len(gids), 1)
+    k = max(1.7, 10.0 / (n ** 0.5))
+    spread = float(VIEW.get("layout_spread", 190)) * (n ** 0.42)
+    try:
+        pos = nx.spring_layout(g, k=k, iterations=200,
+                               seed=int(CFG.get("seed", 42)), scale=1.0)
+    except Exception:
+        pos = nx.circular_layout(g, scale=1.0)
+    return {int(node): (float(xy[0]) * spread, float(xy[1]) * spread)
+            for node, xy in pos.items()}
+
+
+def _network(height: str = "560px"):
     from pyvis.network import Network
 
     net = Network(height=height, width="100%", directed=True,
                   bgcolor="#ffffff", font_color="#1a1a1a",
                   cdn_resources="in_line")          # works offline
     net.set_options(json.dumps({
-        "physics": {"enabled": bool(VIEW["physics"]),
-                    "stabilization": {"iterations": 150},
-                    "barnesHut": {"springLength": 150, "avoidOverlap": 0.4}},
-        "layout": {"randomSeed": int(CFG.get("seed", 42))},
-        "edges": {"arrows": {"to": {"enabled": True, "scaleFactor": 0.55}},
-                  "color": {"color": "#c2cad1", "highlight": "#5a6a78"},
-                  "smooth": {"type": "continuous", "roundness": 0.15},
-                  "font": {"size": 10, "align": "middle",
-                           "strokeWidth": 4, "strokeColor": "#ffffff"}},
-        "nodes": {"font": {"size": 12, "face": "system-ui",
-                           "strokeWidth": 4, "strokeColor": "#ffffff"},
+        # Physics off: positions below are already settled, so the map opens
+        # stable instead of writhing for several seconds.
+        "physics": {"enabled": False},
+        "layout": {"randomSeed": int(CFG.get("seed", 42)), "improvedLayout": False},
+        "edges": {"arrows": {"to": {"enabled": True, "scaleFactor": 0.5}},
+                  "color": {"color": "#ccd4db", "highlight": "#44525f", "opacity": 0.85},
+                  "smooth": {"type": "curvedCW", "roundness": 0.12},
+                  "scaling": {"min": 1, "max": 7},
+                  "font": {"size": 11, "align": "top", "strokeWidth": 5,
+                           "strokeColor": "#ffffff"}},
+        "nodes": {"font": {"size": 13, "face": "system-ui", "vadjust": -4,
+                           "strokeWidth": 5, "strokeColor": "#ffffff"},
                   "borderWidthSelected": 4},
-        "interaction": {"hover": True, "tooltipDelay": 100,
-                        "navigationButtons": True, "keyboard": False},
+        "interaction": {"hover": True, "tooltipDelay": 100, "zoomView": True,
+                        "navigationButtons": True, "keyboard": False,
+                        "dragNodes": True},
     }))
     return net
 
 
-def _add_node(net, gid: int, centre: bool = False) -> None:
+def _add_node(net, gid: int, lang: str, centre: bool = False,
+              pos: tuple[float, float] | None = None) -> None:
     r = S.f.loc[gid]
     role = str(r["role"])
-    is_seed = bool(r["is_seed"])
-    traced = bool(r.get("outflow_observed", True))
-    tip = (f"Account {gid}\n"
-           f"{role.upper()} — {ROLE_MEANING.get(role, '')}\n"
+    is_seed, traced = bool(r["is_seed"]), bool(r.get("outflow_observed", True))
+    tip = (f"{t('col.account', lang)} {gid}\n"
+           f"{role_name(role, lang).upper()} — {role_meaning(role, lang)}\n"
            f"{'─' * 34}\n"
-           f"Review priority   {float(r['priority_score']):.3f}\n"
-           f"Role confidence   {float(r['role_score']):.2f}\n"
-           f"Received          {kzt(r['in_sum'], True)} from {int(r['in_deg'])}\n"
-           f"Sent              {kzt(r['out_sum'], True)} to {int(r['out_deg'])}\n"
-           f"Hop from seed     {int(r['depth'])}"
-           f"{'   · KNOWN SEED' if is_seed else ''}\n"
-           f"{'' if traced else 'Onward flow NOT traced (export limit)'}\n"
-           f"{'─' * 34}\n{r['evidence']}")
+           f"{t('f.priority', lang)}: {float(r['priority_score']):.3f}\n"
+           f"{t('f.confidence', lang)}: {float(r['role_score']):.2f}\n"
+           f"{t('f.received', lang)}: {kzt(r['in_sum'], lang)} "
+           f"{t('f.payers_n', lang, n=int(r['in_deg']))}\n"
+           f"{t('f.sent', lang)}: {kzt(r['out_sum'], lang)} "
+           f"{t('f.recipients_n', lang, n=int(r['out_deg']))}\n"
+           f"{t('f.depth', lang)}: {int(r['depth'])}"
+           f"{'  · ' + t('f.isseed', lang) if is_seed else ''}\n"
+           f"{'─' * 34}\n{S.evidence(gid, lang)}")
+    extra = {"x": pos[0], "y": pos[1], "physics": False} if pos else {}
     net.add_node(
-        gid, label=str(gid)[-6:], title=tip,
+        gid, label=str(gid)[-6:], title=tip, **extra,
         color={"background": ROLE_COLORS.get(role, "#999"),
                "border": "#111111" if centre else ("#8d99a4" if traced else "#cc3b3b")},
         shape="diamond" if is_seed else "dot",
         size=(30 if centre else 12 + 20 * float(r["priority_score"])),
         borderWidth=5 if centre else (1 if traced else 3),
-        shapeProperties={"borderDashes": [] if traced else [5, 4]},
-    )
+        shapeProperties={"borderDashes": [] if traced else [5, 4]})
 
 
-def _add_edge(net, e, show_amounts: bool) -> None:
+def _add_edge(net, e, show_amounts: bool, lang: str) -> None:
     import math
 
-    net.add_edge(int(e.src), int(e.dst),
-                 value=math.log1p(float(e.sum_kzt)),
-                 title=f"{float(e.sum_kzt):,.0f} KZT over {int(e.n_tx)} transfer(s)",
-                 label=kzt(e.sum_kzt) if show_amounts else None)
-
-
-MAPS = OUT / "_maps"
+    net.add_edge(int(e.src), int(e.dst), value=math.log1p(float(e.sum_kzt)),
+                 title=(f"{float(e.sum_kzt):,.0f} KZT · "
+                        f"{int(e.n_tx)} {t('col.transfers', lang).lower()}"),
+                 label=kzt(e.sum_kzt, lang) if show_amounts else None)
 
 
 def _iframe(doc: str, height: int, key: str) -> str:
-    """Serve the network map as a file rather than inlining it.
+    """Serve the map as a file rather than inlining it.
 
     A pyvis document is ~1 MB. Pushing that through a `srcdoc` attribute means
-    HTML-escaping a megabyte, shipping it over the event channel on every
-    interaction, and trusting the browser to parse an enormous attribute — which
-    is how the maps ended up blank. Written to disk and referenced by URL, the
-    component value is ~200 bytes and the browser fetches the document normally.
+    escaping a megabyte and shipping it over the event channel on every
+    interaction — which is how the maps ended up blank. On disk and referenced
+    by URL, the component value is ~200 bytes.
     """
     MAPS.mkdir(parents=True, exist_ok=True)
     path = MAPS / f"{key}-{hashlib.md5(doc.encode()).hexdigest()[:8]}.html"
     if not path.exists():
         path.write_text(doc, encoding="utf-8")
-    return (f'<iframe src="/gradio_api/file={path}" loading="lazy" '
-            f'style="width:100%;height:{height}px;border:1px solid '
-            f'var(--border-color-primary);border-radius:12px;background:#fff"'
-            f'></iframe>')
+    return (f'<div class="mapwrap"><iframe src="/gradio_api/file={path}" '
+            f'loading="lazy" style="width:100%;height:{height}px;border:1px solid '
+            f'var(--border-color-primary);border-radius:12px;background:#fff">'
+            f'</iframe></div>')
 
 
-def ego_html(gid: int, hops: int, show_amounts: bool) -> str:
+def ego_html(gid: int, hops: int, show_amounts: bool, lang: str) -> str:
     if gid not in S.f.index:
         return ""
     keep, frontier = {gid}, {gid}
@@ -315,20 +403,20 @@ def ego_html(gid: int, hops: int, show_amounts: bool) -> str:
         keep = {gid} | set(sel["src"]) | set(sel["dst"])
 
     sub = S.edges[S.edges["src"].isin(keep) & S.edges["dst"].isin(keep)]
+    ordered = sorted(int(n) for n in keep)
+    pos = _layout(ordered, sub)
     net = _network()
-    for n in sorted(keep):
-        _add_node(net, int(n), centre=(int(n) == int(gid)))
+    for n in ordered:
+        _add_node(net, n, lang, centre=(n == int(gid)), pos=pos.get(n))
     for e in sub.itertuples(index=False):
-        _add_edge(net, e, show_amounts)
+        _add_edge(net, e, show_amounts, lang)
 
-    head = (f"<div class='warnbox'>This neighbourhood has more than {cap} "
-            f"accounts, so only the {cap} largest flows are drawn. Switch to "
-            f"1 hop for the full picture.</div>") if capped else ""
-    return head + _iframe(net.generate_html(notebook=False), 560,
-                          f'ego-{gid}-{hops}-{int(show_amounts)}')
+    head = warn(t("map.capped", lang, cap=cap)) if capped else ""
+    return head + _iframe(net.generate_html(notebook=False), 570,
+                          f"ego-{gid}-{hops}-{int(show_amounts)}-{lang}")
 
 
-def cluster_html(cluster_id: int, show_amounts: bool) -> str:
+def cluster_html(cluster_id: int, show_amounts: bool, lang: str) -> str:
     members = S.nodes[S.nodes["cluster_id"] == int(cluster_id)]
     gids = set(members["gid"].astype(int))
     cap = int(VIEW["cluster_map_max_nodes"])
@@ -336,289 +424,277 @@ def cluster_html(cluster_id: int, show_amounts: bool) -> str:
     if capped:
         gids = set(members.nlargest(cap, "priority_score")["gid"].astype(int))
     sub = S.edges[S.edges["src"].isin(gids) & S.edges["dst"].isin(gids)]
-    net = _network("600px")
-    for n in sorted(gids):
-        _add_node(net, int(n))
+    ordered = sorted(int(n) for n in gids)
+    pos = _layout(ordered, sub)
+    net = _network("640px")
+    for n in ordered:
+        _add_node(net, n, lang, pos=pos.get(n))
     for e in sub.itertuples(index=False):
-        _add_edge(net, e, show_amounts)
-    head = (f"<div class='warnbox'>Showing the {cap} highest-priority of "
-            f"{len(members)} accounts in this cluster.</div>") if capped else ""
-    return head + _iframe(net.generate_html(notebook=False), 620,
-                          f'cluster-{cluster_id}-{int(show_amounts)}')
+        _add_edge(net, e, show_amounts, lang)
+    head = (warn(t("map.capped_cluster", lang, cap=cap, total=len(members)))
+            if capped else "")
+    return head + _iframe(net.generate_html(notebook=False), 660,
+                          f"cluster-{cluster_id}-{int(show_amounts)}-{lang}")
 
 
 # ===========================================================================
-# account detail
+# tables
 # ===========================================================================
 
-BLANK = ("", "", "", pd.DataFrame(), pd.DataFrame())
+def top_table(lang: str) -> pd.DataFrame:
+    rows = S.top.merge(S.features, on="gid", how="left", suffixes=("", "_f"))
+    return pd.DataFrame({
+        t("col.rank", lang): S.top["rank"],
+        t("col.account", lang): S.top["gid"],
+        t("col.role", lang): [role_name(r, lang) for r in S.top["role"]],
+        t("col.priority", lang): S.top["priority_score"].round(3),
+        t("col.why", lang): [why_from_row(r, WEIGHTS, lang)
+                             for r in rows.to_dict("records")],
+    })
 
 
-def account_detail(gid_text, hops, show_amounts):
+def cluster_table(lang: str) -> pd.DataFrame:
+    hyps = []
+    for row in S.clusters.to_dict("records"):
+        members = S.features[S.features["cluster_id"] == row["cluster_id"]]
+        hyps.append(hypothesis_from_members(row, members, lang))
+    return pd.DataFrame({
+        t("col.groupid", lang): S.clusters["cluster_id"],
+        t("col.naccounts", lang): S.clusters["n_nodes"],
+        t("col.nseeds", lang): S.clusters["n_seed"],
+        t("col.internal", lang): [kzt(v, lang) for v in S.clusters["sum_kzt_internal"]],
+        t("col.looks", lang): hyps,
+    })
+
+
+def mapping_table(lang: str) -> pd.DataFrame:
+    rows = [{
+        t("col.file", lang): f.get("file"),
+        t("col.readas", lang): f.get("kind"),
+        t("col.stdfield", lang): canonical,
+        t("col.yourcol", lang): col,
+        t("col.matchedby", lang): (f.get("resolved_by") or {}).get(canonical, "?"),
+    } for f in (S.ingest.get("files") or [])
+      for canonical, col in (f.get("mapping") or {}).items()]
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=[
+        t("col.file", lang), t("col.readas", lang), t("col.stdfield", lang),
+        t("col.yourcol", lang), t("col.matchedby", lang)])
+
+
+def calibration_table(lang: str) -> pd.DataFrame:
+    import yaml
+
+    path = ROOT / "config.calibrated.yaml"
+    cols = [t("col.threshold", lang), t("col.value", lang), t("col.whychosen", lang)]
+    if not path.exists():
+        return pd.DataFrame(columns=cols)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    th, rat = data.get("thresholds") or {}, data.get("rationale") or {}
+    if not th:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame({cols[0]: list(th), cols[1]: [th[k] for k in th],
+                         cols[2]: [rat.get(k, "—") for k in th]})
+
+
+def dossier_table(lang: str) -> pd.DataFrame:
+    cols = [t("col.account", lang), t("col.role", lang), t("col.pattern", lang),
+            t("col.found", lang), t("col.alt", lang), t("col.next", lang)]
+    rows = [dict(zip(cols, [
+        gid,
+        role_name(S.f.at[gid, "role"], lang) if gid in S.f.index else "",
+        d.get("pattern", ""), d.get("summary", ""),
+        d.get("alternative_explanation", ""), d.get("next_step", "")]))
+        for gid, d in sorted(S.dossiers.items())]
+    return pd.DataFrame(rows) if rows else pd.DataFrame(columns=cols)
+
+
+def links_table(gid: int, match: str, other: str, lang: str) -> pd.DataFrame:
+    cols = [t("col.account", lang), t("col.itsrole", lang), t("col.seedq", lang),
+            t("col.amount", lang), t("col.transfers", lang)]
+    sel = S.edges[S.edges[match] == gid]
+    if sel.empty:
+        return pd.DataFrame(columns=cols)
+    out = pd.DataFrame({
+        cols[0]: sel[other].astype("int64"),
+        cols[1]: [role_name(r, lang) if isinstance(r, str) else "—"
+                  for r in sel[other].map(S.f["role"])],
+        cols[2]: sel[other].map(S.f["is_seed"]).map(
+            {True: t("yes", lang), False: ""}).fillna(""),
+        cols[3]: sel["sum_kzt"].round(0).astype("int64"),
+        cols[4]: sel["n_tx"].astype("int64"),
+    })
+    return out.sort_values(cols[3], ascending=False).reset_index(drop=True)
+
+
+# ===========================================================================
+# panels
+# ===========================================================================
+
+def overview_kpis(lang: str) -> str:
+    frontier = (int((~S.features["outflow_observed"]).sum())
+                if "outflow_observed" in S.features else 0)
+    cells = [
+        kpi(f"{len(S.nodes):,}".replace(",", " "), t("kpi.accounts", lang),
+            t("kpi.accounts.sub", lang)),
+        kpi(f"{len(S.top)}", t("kpi.shortlist", lang), t("kpi.shortlist.sub", lang)),
+        kpi(kzt(float(S.edges["sum_kzt"].sum()), lang).split(" ")[0],
+            t("kpi.turnover", lang), t("kpi.turnover.sub", lang)),
+        kpi(f"{len(S.clusters)}", t("kpi.groups", lang), t("kpi.groups.sub", lang)),
+        kpi(f"{frontier}", t("kpi.frontier", lang), t("kpi.frontier.sub", lang)),
+    ]
+    return "<div class='kpis'>" + "".join(cells) + "</div>"
+
+
+def trace_kpis(lang: str) -> str:
+    d = S.trace
+    if not d:
+        return note(t("notgenerated", lang))
+    tot = d.get("totals", {})
+    cost = tot.get("cost_usd")
+    cells = [
+        kpi(f"{d.get('total_runtime_s', 0):.0f}s", t("cost.runtime", lang),
+            t("cost.budget", lang, n=int(d.get("runtime_budget_s", 300)))),
+        kpi(f"{tot.get('n_calls', 0)}", t("cost.calls", lang),
+            t("cost.failed", lang, n=tot["n_failed"]) if tot.get("n_failed")
+            else t("cost.allok", lang)),
+        kpi(f"{tot.get('total_tokens', 0):,}".replace(",", " "),
+            t("cost.tokens", lang),
+            t("cost.reasoning", lang, n=tot.get("reasoning_tokens", 0))),
+        kpi(f"${cost:.4f}" if isinstance(cost, (int, float))
+            else t("cost.unpriced", lang), t("cost.spend", lang),
+            t("cost.thisrun", lang)),
+    ]
+    return "<div class='kpis'>" + "".join(cells) + "</div>"
+
+
+def ingest_summary(lang: str) -> str:
+    p = S.ingest
+    if not p:
+        return note(t("notgenerated", lang))
+    rows = "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>"
+                   for k, v in (p.get("used") or {}).items())
+    out = [f"<table class='facts'>{rows}</table>"]
+    derived = p.get("derived") or []
+    out.append(warn(t("data.derived", lang) + "<ul>"
+                    + "".join(f"<li>{d}</li>" for d in derived) + "</ul>")
+               if derived else note(t("data.allsupplied", lang)))
+    return "".join(out)
+
+
+def account_detail(gid_text, hops, show_amounts, lang):
+    """The demo path: role, the rule that produced it, and the money around it."""
+    empty = pd.DataFrame()
     try:
         gid = int(str(gid_text).strip())
     except (TypeError, ValueError):
-        return ("<div class='note'>Type an account number above, or pick one "
-                "from the list.</div>", "", "", pd.DataFrame(), pd.DataFrame())
+        return note(t("acc.prompt", lang)), "", "", empty, empty
     if gid not in S.f.index:
-        return (f"<div class='warnbox'>Account <b>{gid}</b> is not in this "
-                f"dataset.</div>", "", "", pd.DataFrame(), pd.DataFrame())
+        return warn(t("acc.notfound", lang, gid=gid)), "", "", empty, empty
 
     r = S.f.loc[gid]
     role = str(r["role"])
     traced = bool(r.get("outflow_observed", True))
 
     facts = [
-        ("Review priority", f"<b>{float(r['priority_score']):.3f}</b>"),
-        ("Role confidence", f"{float(r['role_score']):.2f}"),
-        ("Received", f"{kzt(r['in_sum'], True)} from {int(r['in_deg'])} payer(s)"),
-        ("Sent", f"{kzt(r['out_sum'], True)} to {int(r['out_deg'])} recipient(s)"),
-        ("Seeds that can reach it", f"{int(r.get('seed_reach', 0))} of "
-                                    f"{int(S.nodes['is_seed'].sum())}"),
-        ("Est. seed-linked flow", kzt(r.get("seed_kzt_attributed", 0), True)),
-        ("Hops from a seed", str(int(r["depth"]))),
-        ("Known seed account", "yes" if bool(r["is_seed"]) else "no"),
-        ("Cluster", str(int(r["cluster_id"]))),
+        (t("f.priority", lang), f"<b>{float(r['priority_score']):.3f}</b>"),
+        (t("f.confidence", lang), f"{float(r['role_score']):.2f}"),
+        (t("f.received", lang), f"{kzt(r['in_sum'], lang)} "
+                                f"{t('f.payers_n', lang, n=int(r['in_deg']))}"),
+        (t("f.sent", lang), f"{kzt(r['out_sum'], lang)} "
+                            f"{t('f.recipients_n', lang, n=int(r['out_deg']))}"),
+        (t("f.reach", lang), f"{int(r.get('seed_reach', 0))} / "
+                             f"{int(S.nodes['is_seed'].sum())}"),
+        (t("f.attributed", lang), kzt(r.get("seed_kzt_attributed", 0), lang)),
+        (t("f.depth", lang), str(int(r["depth"]))),
+        (t("f.isseed", lang), t("yes", lang) if bool(r["is_seed"]) else t("no", lang)),
+        (t("f.cluster", lang), str(int(r["cluster_id"]))),
     ]
     rows = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in facts)
-
-    card = [
-        f"<div class='hero'><h2>Account {gid} &nbsp; {pill(role)}</h2>",
-        f"<p>{ROLE_MEANING.get(role, '')}</p></div>",
-        f"<table class='facts'>{rows}</table>",
-        note(f"<b>Evidence.</b> {r['evidence']}"),
-    ]
+    card = [hero(f"{t('col.account', lang)} {gid} &nbsp; {pill(role, lang)}",
+                 role_meaning(role, lang)),
+            f"<table class='facts'>{rows}</table>",
+            note(f"<b>{t('acc.evidence', lang)}.</b> {S.evidence(gid, lang)}")]
     if not traced:
-        card.append("<div class='warnbox'><b>Careful.</b> This account sits at "
-                    "the edge of the export. Its outgoing transfers were never "
-                    "requested, so <b>we do not know</b> whether the money "
-                    "stopped here. It is a strong candidate for a follow-up "
-                    "data request.</div>")
+        card.append(warn(t("acc.frontier_warn", lang)))
     if str(r.get("secondary_roles", "")):
-        card.append(note(f"Also matched: <b>{r['secondary_roles']}</b>"))
+        extra = ", ".join(role_name(x, lang)
+                          for x in str(r["secondary_roles"]).split(";") if x)
+        card.append(note(f"{t('acc.also', lang)}: <b>{extra}</b>"))
     caveat = str(r.get("critic_caveat", "") or "")
     if caveat:
-        card.append(f"<div class='warnbox'><b>Reviewer's caveat.</b> "
-                    f"{caveat.replace(' | ', '<br><br>')}</div>")
+        card.append(warn(f"<b>{t('acc.caveat', lang)}.</b> "
+                         + caveat.replace(" | ", "<br><br>")))
 
-    # ---- why this role -----------------------------------------------------
-    t = S.rule_trace(gid)
-    why = ["### Why it was classified this way", "",
-           "*This is the rule the engine applied. No AI model was involved in "
-           "assigning the role — the numbers below are the ones the rule "
-           "actually compared.*", ""]
-    if t:
-        why += [f"**Rule that fired**", "", f"> `{t.get('gate', 'n/a')}`", ""]
-        if t.get("metrics"):
-            why += ["**Values it used**", "", "| | |", "|---|---:|"]
-            why += [f"| {k} | {_fmt_v(v)} |" for k, v in t["metrics"].items()]
+    tr = S.rule_trace(gid)
+    why = [f"### {t('why.heading', lang)}", "", t("why.lead", lang), ""]
+    if tr:
+        why += [t("why.rule", lang), "", f"> `{tr.get('gate', '—')}`", ""]
+        if tr.get("metrics"):
+            why += [t("why.values", lang), "", "| | |", "|---|---:|"]
+            why += [f"| {k} | {_fmt_v(v)} |" for k, v in tr["metrics"].items()]
             why.append("")
-        if t.get("thresholds"):
-            why += ["**Thresholds it compared against** *(from `config.yaml`)*",
-                    "", "| | |", "|---|---:|"]
-            why += [f"| {k} | {_fmt_v(v)} |" for k, v in t["thresholds"].items()]
+        if tr.get("thresholds"):
+            why += [t("why.thresholds", lang), "", "| | |", "|---|---:|"]
+            why += [f"| {k} | {_fmt_v(v)} |" for k, v in tr["thresholds"].items()]
             why.append("")
-        if t.get("penalties"):
-            why += ["**Confidence reduced because**", ""] + \
-                   [f"- {p}" for p in t["penalties"]] + [""]
-        if t.get("notes"):
-            why += [f"- {n}" for n in t["notes"]] + [""]
+        if tr.get("penalties"):
+            why += [t("why.penalties", lang), ""] + \
+                   [f"- {p}" for p in tr["penalties"]] + [""]
+        if tr.get("notes"):
+            why += [f"- {n}" for n in tr["notes"]] + [""]
     adj = str(r.get("priority_adjustments", "") or "")
     if adj:
-        why += [f"**Priority adjustment.** {adj}", ""]
+        why += [f"{t('why.adjust', lang)} {adj}", ""]
 
     d = S.dossiers.get(gid)
     if d:
-        why += ["---", "", "### Investigator's dossier", "",
-                f"**Pattern.** {d.get('pattern', '—')}"
-                + (f" *(confidence: {d.get('confidence')})*" if d.get("confidence") else ""),
-                "", str(d.get("summary", "")), ""]
+        why += ["---", "", f"### {t('dossier.heading', lang)}", "",
+                f"{t('dossier.pattern', lang)} {d.get('pattern', '—')}", "",
+                str(d.get("summary", "")), ""]
         if d.get("alternative_explanation"):
-            why += [f"**Could equally be.** {d['alternative_explanation']}", ""]
+            why += [f"{t('dossier.alt', lang)} {d['alternative_explanation']}", ""]
         if d.get("next_step"):
-            why += [f"**Suggested next step.** {d['next_step']}", ""]
-        why += ["*Advisory only — this did not affect the role or the ranking.*"]
+            why += [f"{t('dossier.next', lang)} {d['next_step']}", ""]
+        why.append(t("dossier.advisory", lang))
 
     return ("\n".join(card), "\n".join(why),
-            ego_html(gid, hops, show_amounts),
-            _links(gid, "dst", "src", "Paid in from"),
-            _links(gid, "src", "dst", "Paid out to"))
+            ego_html(gid, hops, show_amounts, lang),
+            links_table(gid, "dst", "src", lang),
+            links_table(gid, "src", "dst", lang))
 
 
 def _fmt_v(v) -> str:
     if v is None:
         return "—"
     if isinstance(v, bool):
-        return "yes" if v else "no"
+        return "✓" if v else "✗"
     if isinstance(v, float):
         return f"{v:,.2f}" if abs(v) < 1e5 else f"{v:,.0f}"
     return f"{v:,}" if isinstance(v, int) else str(v)
 
 
-def _links(gid: int, match: str, other: str, label: str) -> pd.DataFrame:
-    sel = S.edges[S.edges[match] == gid]
-    cols = ["Account", "Its role", "Seed?", "Amount (KZT)", "Transfers"]
-    if sel.empty:
-        return pd.DataFrame(columns=cols)
-    out = pd.DataFrame({
-        "Account": sel[other].astype("int64"),
-        "Its role": sel[other].map(S.f["role"]).fillna("—"),
-        "Seed?": sel[other].map(S.f["is_seed"]).map({True: "yes", False: ""}).fillna(""),
-        "Amount (KZT)": sel["sum_kzt"].round(0).astype("int64"),
-        "Transfers": sel["n_tx"].astype("int64"),
-    })
-    return out.sort_values("Amount (KZT)", ascending=False).reset_index(drop=True)
+def cluster_panel(cid, amounts, lang):
+    cid = int(cid)
+    row = S.clusters[S.clusters["cluster_id"] == cid].iloc[0]
+    members = S.features[S.features["cluster_id"] == cid].sort_values(
+        "priority_score", ascending=False)
+    info = hero(
+        f"{t('grp.word', lang)} {cid}",
+        f"<b>{int(row['n_nodes'])}</b> {t('grp.accounts', lang)} · "
+        f"<b>{int(row['n_seed'])}</b> {t('grp.seeds', lang)} · "
+        f"<b>{kzt(row['sum_kzt_internal'], lang)}</b> {t('grp.internal', lang)}"
+    ) + note(f"<b>{t('grp.hypothesis', lang)}.</b> "
+             f"{hypothesis_from_members(row.to_dict(), members, lang)}")
+    table = pd.DataFrame({
+        t("col.account", lang): members["gid"].astype("int64"),
+        t("col.role", lang): [role_name(r, lang) for r in members["role"]],
+        t("col.priority", lang): members["priority_score"].round(3),
+        t("col.evidence", lang): [S.evidence(int(g), lang) for g in members["gid"]],
+    }).reset_index(drop=True)
+    return info, cluster_html(cid, amounts, lang), table
 
 
-# ===========================================================================
-# tab content
-# ===========================================================================
-
-def role_bars() -> str:
-    """The role distribution, as plain HTML.
-
-    Deliberately not a charting library: this is one horizontal bar chart, and a
-    plotting dependency renders it through a JavaScript bundle whose version has
-    to agree with the front end's. Hand-drawn, it cannot fail to display, works
-    with no network, and inherits the page theme.
-    """
-    counts = S.nodes["role"].value_counts()
-    total = int(counts.sum())
-    widest = int(counts.max()) if len(counts) else 1
-    rows = []
-    for role, n in counts.items():
-        pct = 100 * n / total
-        rows.append(
-            f"<div class='bar'>"
-            f"<div class='bl'><span class='sw' style='background:"
-            f"{ROLE_COLORS.get(role, '#888')}'></span>{role}</div>"
-            f"<div class='bt' title='{ROLE_MEANING.get(role, '')}'>"
-            f"<div class='bf' style='width:{max(1.2, 100 * n / widest):.1f}%;"
-            f"background:{ROLE_COLORS.get(role, '#888')}'></div></div>"
-            f"<div class='bn'>{n:,}<span class='bp'>{pct:.0f}%</span></div>"
-            f"</div>")
-    return "<div class='bars'>" + "".join(rows) + "</div>"
-
-
-def overview_kpis() -> str:
-    n = len(S.nodes)
-    frontier = int((~S.features["outflow_observed"]).sum()) \
-        if "outflow_observed" in S.features else 0
-    shortlist = len(S.top)
-    return kpis([
-        kpi(f"{n:,}", "accounts traced", "from 81 known seeds"),
-        kpi(f"{shortlist}", "to review first", "ranked, with reasons"),
-        kpi(kzt(float(S.edges['sum_kzt'].sum())), "KZT traced", "July 2026"),
-        kpi(f"{len(S.clusters)}", "groups found", "with a hypothesis each"),
-        kpi(f"{frontier}", "dead ends", "flow not traced — request more"),
-    ])
-
-
-def top_table() -> pd.DataFrame:
-    t = S.top.copy()
-    return pd.DataFrame({
-        "#": t["rank"],
-        "Account": t["gid"],
-        "Role": t["role"],
-        "Priority": t["priority_score"].round(3),
-        "Why it is on this list": t["why"],
-    })
-
-
-def cluster_table() -> pd.DataFrame:
-    c = S.clusters.copy()
-    return pd.DataFrame({
-        "Group": c["cluster_id"],
-        "Accounts": c["n_nodes"],
-        "Known seeds": c["n_seed"],
-        "Internal flow": c["sum_kzt_internal"].map(kzt),
-        "What it looks like": c["hypothesis"],
-    })
-
-
-def trace_kpis() -> str:
-    d = S.trace
-    if not d:
-        return note("No run trace found. Run the pipeline to generate one.")
-    t = d.get("totals", {})
-    cost = t.get("cost_usd")
-    cost_txt = (f"${cost:.4f}" if isinstance(cost, (int, float))
-                else "unpriced")
-    return kpis([
-        kpi(f"{d.get('total_runtime_s', 0):.0f}s", "total runtime",
-            f"budget {d.get('runtime_budget_s', 300):.0f}s"),
-        kpi(f"{t.get('n_calls', 0)}", "model calls",
-            f"{t.get('n_failed', 0)} failed" if t.get("n_failed") else "all succeeded"),
-        kpi(f"{t.get('total_tokens', 0):,}", "tokens",
-            f"{t.get('reasoning_tokens', 0):,} reasoning"),
-        kpi(cost_txt, "spend", "this run"),
-    ])
-
-
-def ingest_summary() -> str:
-    p = S.ingest
-    if not p:
-        return note("No ingest report — run the pipeline to generate one.")
-    used = p.get("used", {})
-    rows = "".join(f"<tr><td>{k}</td><td><code>{v}</code></td></tr>"
-                   for k, v in used.items())
-    html_ = [f"<table class='facts'>{rows}</table>"]
-    derived = p.get("derived") or []
-    if derived:
-        html_.append("<div class='warnbox'><b>Derived, not supplied.</b><ul>"
-                     + "".join(f"<li>{d}</li>" for d in derived) + "</ul></div>")
-    else:
-        html_.append(note("Everything the pipeline needed was present in the "
-                          "input. Nothing had to be inferred."))
-    return "".join(html_)
-
-
-def mapping_table() -> pd.DataFrame:
-    rows = []
-    for f in (S.ingest.get("files") or []):
-        for canonical, col in (f.get("mapping") or {}).items():
-            rows.append({
-                "File": f.get("file"),
-                "Read as": f.get("kind"),
-                "Standard field": canonical,
-                "Column in your file": col,
-                "Matched by": (f.get("resolved_by") or {}).get(canonical, "?"),
-            })
-    return pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=["File", "Read as", "Standard field", "Column in your file", "Matched by"])
-
-
-def calibration_table() -> pd.DataFrame | None:
-    import yaml
-
-    path = ROOT / "config.calibrated.yaml"
-    if not path.exists():
-        return None
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    th = data.get("thresholds") or {}
-    if not th:
-        return None
-    rat = data.get("rationale") or {}
-    return pd.DataFrame({
-        "Threshold": list(th),
-        "Value": [th[k] for k in th],
-        "Why the agent chose this number": [rat.get(k, "—") for k in th],
-    })
-
-
-def dossier_table() -> pd.DataFrame:
-    rows = [{
-        "Account": gid,
-        "Role": S.f.at[gid, "role"] if gid in S.f.index else "",
-        "Pattern": d.get("pattern", ""),
-        "What the investigator found": d.get("summary", ""),
-        "Could equally be": d.get("alternative_explanation", ""),
-        "Next step": d.get("next_step", ""),
-    } for gid, d in sorted(S.dossiers.items())]
-    return pd.DataFrame(rows)
-
-
-def ask_agent(question: str, history: list):
+def ask_agent(question: str, history: list, lang: str):
     history = history or []
     if not question or not question.strip():
         return history, ""
@@ -637,17 +713,17 @@ def ask_agent(question: str, history: list):
     if answer.tool_calls:
         calls = "\n".join(
             f"- `{c['tool']}({json.dumps(c.get('args', {}), default=str)})`"
-            + (f" — error: {c['error']}" if c.get("error") else "")
+            + (f" — {c['error']}" if c.get("error") else "")
             for c in answer.tool_calls)
-        parts.append(f"\n<details><summary>The {len(answer.tool_calls)} graph "
-                     f"queries this answer is built from</summary>\n\n{calls}\n"
-                     f"</details>")
-    t = tracer.totals()
-    if t["n_calls"]:
-        cost = t["cost_usd"]
-        parts.append(f"\n<sub>{t['n_calls']} call(s) · {t['total_tokens']:,} tokens "
-                     f"· {f'${cost:.4f}' if cost is not None else 'unpriced'} "
-                     f"· {tracer.elapsed_s:.1f}s</sub>")
+        parts.append(f"\n<details><summary>"
+                     f"{t('ask.queries', lang, n=len(answer.tool_calls))}"
+                     f"</summary>\n\n{calls}\n</details>")
+    tot = tracer.totals()
+    if tot["n_calls"]:
+        cost = tot["cost_usd"]
+        parts.append(f"\n<sub>{tot['n_calls']} · {tot['total_tokens']:,} tokens · "
+                     f"{f'${cost:.4f}' if cost is not None else t('cost.unpriced', lang)}"
+                     f" · {tracer.elapsed_s:.1f}s</sub>")
     return history + [{"role": "user", "content": question},
                       {"role": "assistant", "content": "\n".join(parts)}], ""
 
@@ -657,333 +733,337 @@ def ask_agent(question: str, history: list):
 # ===========================================================================
 
 def build() -> gr.Blocks:
+    # Every localizable component registers the function that produces its value
+    # for a given language. Switching language then reapplies all of them in one
+    # event, so there is exactly one place a translation can go missing.
+    reg: list[tuple[object, object]] = []
+
+    def L(component, producer):
+        reg.append((component, producer))
+        return component
+
+    lang0 = DEFAULT_LANG
+
     with gr.Blocks(title="Money Graph", css=CSS,
                    theme=gr.themes.Soft(primary_hue="slate",
                                         neutral_hue="slate")) as demo:
-
         if not S.ok:
-            gr.Markdown(f"# Money Graph\n\n### No results yet\n\nMissing from "
-                        f"`{OUT}`: `{'`, `'.join(S.missing)}`\n\nRun this first:\n"
-                        f"```bash\n./agent_run.sh\n```")
-            prof = S.text("profile_report.md")
-            if prof:
-                with gr.Accordion("Data profile (already generated)", open=False):
-                    gr.Markdown(prof)
+            gr.Markdown(f"# Money Graph\n\n### {t('nomaps', lang0)}\n\n"
+                        f"`{'`, `'.join(S.missing)}`\n\n```bash\n./agent_run.sh\n```")
             return demo
 
-        # ---------------------------------------------------------- 1. start
-        with gr.Tab("Start here"):
-            gr.HTML(
-                "<div class='hero'><h2>Money Graph</h2><p>Law enforcement gave "
-                "the bank 81 customers known to have received drug-trafficking "
-                "money. This tool followed their outgoing transfers four hops "
-                "through the bank and worked out <b>who sits above them</b> — "
-                "then ranked every account by how much it is worth reviewing, "
-                "with a written reason for each.<br><br><b>Everything here is a "
-                "hypothesis for an analyst to verify, not a finding of "
-                "fact.</b></p></div>")
-            gr.HTML(overview_kpis())
+        with gr.Row(elem_classes="langbar"):
+            lang = gr.Radio([(name, code) for code, name in LANGUAGES.items()],
+                            value=lang0, show_label=False, container=False,
+                            scale=0, min_width=380)
+        # Sits above the tabs so it is seen before anything it applies to.
+        L(gr.HTML(mt_banner(lang0)), mt_banner)
 
-            gr.Markdown("### Where to go")
-            with gr.Row():
-                gr.HTML(note(
-                    "<b>1 · Who to review first</b><br>The ranked shortlist. "
-                    "Start at the top and read the reason column. This is the "
-                    "answer to the question the case asks."))
-                gr.HTML(note(
-                    "<b>2 · Account detail</b><br>Type any account number to get "
-                    "its role, <i>the exact rule that produced it</i>, and a map "
-                    "of the money moving through it."))
-                gr.HTML(note(
-                    "<b>3 · Groups</b><br>The network split into communities, "
-                    "each with a hypothesis about what it is."))
+        with gr.Tabs():
+            # ------------------------------------------------------- about
+            # First tab on purpose: someone who opens this and reads nothing
+            # else should still know what the tool does and where to look.
+            with L(gr.Tab(t("tab.about", lang0)),
+                   lambda l: gr.Tab(label=t("tab.about", l))):
+                L(gr.HTML(hero(t("about.title", lang0), t("about.lead", lang0))),
+                  lambda l: hero(t("about.title", l), t("about.lead", l)))
+                L(gr.Markdown(f"### {t('about.steps', lang0)}"),
+                  lambda l: f"### {t('about.steps', l)}")
+                for _k in ("about.step1", "about.step2", "about.step3"):
+                    L(gr.HTML(note(t(_k, lang0))),
+                      (lambda k: (lambda l: note(t(k, l))))(_k))
+                L(gr.Markdown(f"### {t('about.map', lang0)}"),
+                  lambda l: f"### {t('about.map', l)}")
+                L(gr.Dataframe(tab_guide_table(lang0), wrap=True, max_height=430,
+                               interactive=False), tab_guide_table)
+                L(gr.HTML(note(t("about.safety", lang0))),
+                  lambda l: note(t("about.safety", l)))
+                L(gr.HTML(overview_kpis(lang0)), overview_kpis)
 
-            gr.Markdown("### How the accounts were classified")
-            with gr.Row():
-                with gr.Column(scale=3):
-                    gr.HTML(role_bars())
-                with gr.Column(scale=2):
-                    gr.HTML("<div class='legend'><h4>What each role means</h4>"
-                            + "".join(
-                                f"<div class='row'><span class='sw' "
-                                f"style='background:{ROLE_COLORS.get(r)}'></span>"
-                                f"<b>{r}</b><span class='t'>— {m}</span></div>"
-                                for r, m in ROLE_MEANING.items()) + "</div>")
-            gr.HTML(note(
-                "<b>Why so many <i>terminal</i> and <i>cutoff</i>?</b> Both are "
-                "artifacts of how the data was collected, and both are handled "
-                "deliberately. <i>cutoff</i> accounts sit at the four-hop edge of "
-                "the export — their onward transfers were never requested, so we "
-                "say <i>unknown</i> rather than pretending the money stopped. "
-                "<i>terminal</i> accounts were traced, but most are ordinary "
-                "leaves that simply had nothing above the 5,000 KZT reporting "
-                "floor leaving them. Neither is treated as a strong signal."))
+            # ------------------------------------------------------- start
+            with L(gr.Tab(t("tab.start", lang0)),
+                   lambda l: gr.Tab(label=t("tab.start", l))):
+                L(gr.HTML(hero(t("start.title", lang0), t("start.lead", lang0))),
+                  lambda l: hero(t("start.title", l), t("start.lead", l)))
+                L(gr.HTML(note(t("purpose.start", lang0))),
+                  lambda l: note(t("purpose.start", l)))
+                L(gr.HTML(overview_kpis(lang0)), overview_kpis)
+                L(gr.Markdown(f"### {t('start.where', lang0)}"),
+                  lambda l: f"### {t('start.where', l)}")
+                with gr.Row():
+                    for key in ("start.card1", "start.card2", "start.card3"):
+                        L(gr.HTML(note(t(key, lang0))),
+                          (lambda k: (lambda l: note(t(k, l))))(key))
+                L(gr.Markdown(f"### {t('start.classified', lang0)}"),
+                  lambda l: f"### {t('start.classified', l)}")
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        L(gr.HTML(role_bars(lang0)), role_bars)
+                    with gr.Column(scale=2):
+                        L(gr.HTML(_rolekey(lang0)), _rolekey)
+                L(gr.HTML(note(t("start.artifacts", lang0))),
+                  lambda l: note(t("start.artifacts", l)))
 
-        # ------------------------------------------------------- 2. shortlist
-        with gr.Tab("Who to review first"):
-            gr.HTML("<div class='hero'><h2>The shortlist</h2><p>Every account "
-                    "scored on five signals, ranked highest first. The last "
-                    "column says, in plain language, what put it there.</p></div>")
-            gr.HTML(note(
-                "<b>Click any row</b> to open that account's full detail below. "
-                "The score combines: its role, how much seed-linked money flows "
-                "through it, how many separate courier chains reach it, how many "
-                "different payers it has, and how seed-heavy its group is. "
-                "<b>Known seeds are deliberately pushed down</b> — police already "
-                "have those 81; the value is in what sits above them."))
-            top_df = gr.Dataframe(top_table(), wrap=True, max_height=460,
-                                  interactive=False)
-            sel_card = gr.HTML()
-            sel_why = gr.Markdown()
+            # --------------------------------------------------- shortlist
+            with L(gr.Tab(t("tab.priority", lang0)),
+                   lambda l: gr.Tab(label=t("tab.priority", l))):
+                L(gr.HTML(hero(t("prio.title", lang0), t("prio.lead", lang0))),
+                  lambda l: hero(t("prio.title", l), t("prio.lead", l)))
+                L(gr.HTML(note(t("purpose.priority", lang0))),
+                  lambda l: note(t("purpose.priority", l)))
+                L(gr.HTML(note(t("prio.note", lang0))),
+                  lambda l: note(t("prio.note", l)))
+                top_df = L(gr.Dataframe(top_table(lang0), wrap=True, max_height=470,
+                                        interactive=False), top_table)
+                # Pre-filled with the top-ranked account, so the panel below is
+                # never an empty box waiting for a click.
+                _first = int(S.top["gid"].iloc[0])
+                _card0, _why0, *_rest = account_detail(_first, 1, False, lang0)
+                L(gr.Markdown(f"### {t('prio.selected', lang0)}"),
+                  lambda l: f"### {t('prio.selected', l)}")
+                L(gr.HTML(note(t("prio.clickhint", lang0))),
+                  lambda l: note(t("prio.clickhint", l)))
+                sel_card = gr.HTML(_card0)
+                sel_why = gr.Markdown(_why0)
 
-            def pick_row(evt: gr.SelectData):
-                try:
-                    gid = int(top_table().iloc[evt.index[0]]["Account"])
-                except Exception:
-                    return "", ""
-                card, why, _map, _p, _r = account_detail(gid, 1, False)
-                return card, why
+                def pick_row(lang_now, evt: gr.SelectData):
+                    try:
+                        gid = int(top_table(lang_now).iloc[evt.index[0]][
+                            t("col.account", lang_now)])
+                    except Exception:
+                        return "", ""
+                    card, why, *_ = account_detail(gid, 1, False, lang_now)
+                    return card, why
 
-            top_df.select(pick_row, None, [sel_card, sel_why])
+                top_df.select(pick_row, lang, [sel_card, sel_why])
 
-        # ---------------------------------------------------- 3. account view
-        with gr.Tab("Account detail"):
-            gr.HTML("<div class='hero'><h2>Look up an account</h2><p>Type any "
-                    "account number to see its role, the exact rule that produced "
-                    "it, and how money moves through it.</p></div>")
-            with gr.Row():
-                gid_in = gr.Textbox(label="Account number", scale=3,
-                                    placeholder="paste a gid, then press Enter")
-                pick = gr.Dropdown(
-                    choices=[str(int(g)) for g in S.top["gid"]],
-                    label="…or pick from the shortlist", value=None, scale=2)
-            with gr.Row():
-                hops_in = gr.Radio([1, 2], value=int(VIEW["ego_hops_default"]),
-                                   label="How far around it to draw",
-                                   info="1 = direct counterparties only "
-                                        "(clearest). 2 = their counterparties too.")
-                amt_in = gr.Checkbox(False, label="Label arrows with amounts",
-                                     info="Off keeps the map readable; the amount "
-                                          "is always in the tooltip.")
+            # ----------------------------------------------------- account
+            with L(gr.Tab(t("tab.account", lang0)),
+                   lambda l: gr.Tab(label=t("tab.account", l))):
+                L(gr.HTML(hero(t("acc.title", lang0), t("acc.lead", lang0))),
+                  lambda l: hero(t("acc.title", l), t("acc.lead", l)))
+                L(gr.HTML(note(t("purpose.account", lang0))),
+                  lambda l: note(t("purpose.account", l)))
+                with gr.Row():
+                    gid_in = L(gr.Textbox(label=t("acc.input", lang0), scale=3,
+                                          placeholder=t("acc.placeholder", lang0)),
+                               lambda l: gr.update(label=t("acc.input", l),
+                                                   placeholder=t("acc.placeholder", l)))
+                    pick = L(gr.Dropdown([str(int(g)) for g in S.top["gid"]],
+                                         label=t("acc.pick", lang0), value=None,
+                                         scale=2),
+                             lambda l: gr.update(label=t("acc.pick", l)))
+                with gr.Row():
+                    hops_in = L(gr.Radio([1, 2], value=int(VIEW["ego_hops_default"]),
+                                         label=t("acc.hops", lang0),
+                                         info=t("acc.hops.info", lang0)),
+                                lambda l: gr.update(label=t("acc.hops", l),
+                                                    info=t("acc.hops.info", l)))
+                    amt_in = L(gr.Checkbox(False, label=t("acc.amounts", lang0),
+                                           info=t("acc.amounts.info", lang0)),
+                               lambda l: gr.update(label=t("acc.amounts", l),
+                                                   info=t("acc.amounts.info", l)))
 
-            # Rendered here, not in a load event: the page then arrives with
-            # content already in it. A component that starts empty and waits for
-            # a round-trip is a component that shows nothing if anything at all
-            # goes wrong on the way.
-            d_card, d_why, d_map, d_pay, d_rec = account_detail(
-                int(S.top["gid"].iloc[0]), int(VIEW["ego_hops_default"]), False)
+                first = int(S.top["gid"].iloc[0])
+                d_card, d_why, d_map, d_pay, d_rec = account_detail(
+                    first, int(VIEW["ego_hops_default"]), False, lang0)
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        card_out = gr.HTML(d_card)
+                    with gr.Column(scale=1):
+                        why_out = gr.Markdown(d_why)
+                L(gr.Markdown(f"### {t('acc.mapheading', lang0)}"),
+                  lambda l: f"### {t('acc.mapheading', l)}")
+                L(gr.HTML(note(t("map.guide", lang0))),
+                  lambda l: note(t("map.guide", l)))
+                map_out = gr.HTML(d_map)
+                with L(gr.Accordion(t("legend.key", lang0), open=False),
+                       lambda l: gr.Accordion(label=t("legend.key", l), open=False)):
+                    L(gr.HTML(legend_html(lang0)), legend_html)
+                with gr.Row():
+                    payers_out = L(gr.Dataframe(d_pay, label=t("acc.payers", lang0),
+                                                max_height=300, interactive=False),
+                                   lambda l: gr.update(label=t("acc.payers", l)))
+                    recips_out = L(gr.Dataframe(d_rec,
+                                                label=t("acc.recipients", lang0),
+                                                max_height=300, interactive=False),
+                                   lambda l: gr.update(label=t("acc.recipients", l)))
 
-            with gr.Row():
-                with gr.Column(scale=1):
-                    card_out = gr.HTML(d_card)
-                with gr.Column(scale=1):
-                    why_out = gr.Markdown(d_why)
+                outs = [card_out, why_out, map_out, payers_out, recips_out]
+                ins = [gid_in, hops_in, amt_in, lang]
+                gid_in.submit(account_detail, ins, outs)
+                hops_in.change(account_detail, ins, outs)
+                amt_in.change(account_detail, ins, outs)
+                pick.change(lambda g, h, a, l: account_detail(g, h, a, l) if g
+                            else ("", "", "", pd.DataFrame(), pd.DataFrame()),
+                            [pick, hops_in, amt_in, lang], outs)
 
-            gr.Markdown("### The money around this account")
-            gr.HTML(READING_GUIDE)
-            map_out = gr.HTML(d_map)
-            with gr.Accordion("Colour and shape key", open=False):
-                gr.HTML(legend_html())
-            with gr.Row():
-                payers_out = gr.Dataframe(d_pay,
-                                          label="Money in — who paid this account",
-                                          max_height=300, interactive=False)
-                recips_out = gr.Dataframe(d_rec, label="Money out — who it paid",
-                                          max_height=300, interactive=False)
+            # ------------------------------------------------------ groups
+            with L(gr.Tab(t("tab.groups", lang0)),
+                   lambda l: gr.Tab(label=t("tab.groups", l))):
+                L(gr.HTML(hero(t("grp.title", lang0), t("grp.lead", lang0))),
+                  lambda l: hero(t("grp.title", l), t("grp.lead", l)))
+                L(gr.HTML(note(t("purpose.groups", lang0))),
+                  lambda l: note(t("purpose.groups", l)))
+                L(gr.Dataframe(cluster_table(lang0), wrap=True, max_height=300,
+                               interactive=False), cluster_table)
+                L(gr.HTML(note(t("grp.note", lang0))),
+                  lambda l: note(t("grp.note", l)))
+                first_c = str(int(S.clusters["cluster_id"].iloc[0]))
+                cl = L(gr.Dropdown([str(int(c)) for c in S.clusters["cluster_id"]],
+                                   value=first_c, label=t("grp.show", lang0)),
+                       lambda l: gr.update(label=t("grp.show", l)))
+                cl_amt = L(gr.Checkbox(False, label=t("acc.amounts", lang0)),
+                           lambda l: gr.update(label=t("acc.amounts", l)))
+                c_info, c_map, c_members = cluster_panel(first_c, False, lang0)
+                cl_info = gr.HTML(c_info)
+                L(gr.HTML(note(t("map.guide", lang0))),
+                  lambda l: note(t("map.guide", l)))
+                cl_map = gr.HTML(c_map)
+                cl_members = L(gr.Dataframe(c_members, label=t("grp.members", lang0),
+                                            max_height=300, interactive=False),
+                               lambda l: gr.update(label=t("grp.members", l)))
+                cl.change(cluster_panel, [cl, cl_amt, lang],
+                          [cl_info, cl_map, cl_members])
+                cl_amt.change(cluster_panel, [cl, cl_amt, lang],
+                              [cl_info, cl_map, cl_members])
 
-            outs = [card_out, why_out, map_out, payers_out, recips_out]
-            ins = [gid_in, hops_in, amt_in]
-            gid_in.submit(account_detail, ins, outs)
-            hops_in.change(account_detail, ins, outs)
-            amt_in.change(account_detail, ins, outs)
-            pick.change(lambda g, h, a: account_detail(g, h, a) if g else BLANK,
-                        [pick, hops_in, amt_in], outs)
+            # --------------------------------------------------------- ask
+            with L(gr.Tab(t("tab.ask", lang0)),
+                   lambda l: gr.Tab(label=t("tab.ask", l))):
+                L(gr.HTML(hero(t("ask.title", lang0), t("ask.lead", lang0))),
+                  lambda l: hero(t("ask.title", l), t("ask.lead", l)))
+                L(gr.HTML(note(t("purpose.ask", lang0))),
+                  lambda l: note(t("purpose.ask", l)))
+                L(gr.HTML(note(t("ask.note", lang0))),
+                  lambda l: note(t("ask.note", l)))
+                chat = gr.Chatbot(type="messages", height=420, allow_tags=True,
+                                  show_label=False)
+                q = L(gr.Textbox(label=t("ask.q", lang0), show_label=False,
+                                 placeholder=t("ask.placeholder", lang0)),
+                      lambda l: gr.update(placeholder=t("ask.placeholder", l)))
+                with gr.Row():
+                    send = L(gr.Button(t("ask.send", lang0), variant="primary"),
+                             lambda l: gr.update(value=t("ask.send", l)))
+                    clear = L(gr.Button(t("ask.clear", lang0)),
+                              lambda l: gr.update(value=t("ask.clear", l)))
+                gr.Examples([t("ask.ex1", lang0), t("ask.ex2", lang0),
+                             t("ask.ex3", lang0)], inputs=q,
+                            label=t("ask.examples", lang0))
+                send.click(ask_agent, [q, chat, lang], [chat, q])
+                q.submit(ask_agent, [q, chat, lang], [chat, q])
+                clear.click(lambda: ([], ""), None, [chat, q])
 
-        # ---------------------------------------------------------- 4. groups
-        with gr.Tab("Groups"):
-            gr.HTML("<div class='hero'><h2>Communities in the network</h2><p>The "
-                    "network split into groups of accounts that move money among "
-                    "themselves. Each one gets a hypothesis about what it looks "
-                    "like.</p></div>")
-            gr.Dataframe(cluster_table(), wrap=True, max_height=300,
-                         interactive=False)
-            gr.HTML(note(
-                "Grouping uses the Louvain method on an <b>undirected</b> view of "
-                "the network — community detection needs one. Direction is "
-                "dropped <i>for grouping only</i>: every role, number and arrow "
-                "elsewhere still uses the real direction of the money. Small "
-                "disconnected fragments are kept as their own groups rather than "
-                "being folded into the big one."))
-            first_cluster = str(int(S.clusters["cluster_id"].iloc[0]))
-            cl = gr.Dropdown([str(int(c)) for c in S.clusters["cluster_id"]],
-                             value=first_cluster, label="Show group")
-            cl_amt = gr.Checkbox(False, label="Label arrows with amounts")
+            # ------------------------------------------------------ agents
+            with L(gr.Tab(t("tab.agents", lang0)),
+                   lambda l: gr.Tab(label=t("tab.agents", l))):
+                L(gr.HTML(hero(t("ag.title", lang0), t("ag.lead", lang0))),
+                  lambda l: hero(t("ag.title", l), t("ag.lead", l)))
+                L(gr.HTML(note(t("purpose.agents", lang0))),
+                  lambda l: note(t("purpose.agents", l)))
+                L(gr.Markdown(f"### {t('ag.thresholds', lang0)}"),
+                  lambda l: f"### {t('ag.thresholds', l)}")
+                L(gr.HTML(note(t("ag.thresholds.note", lang0))),
+                  lambda l: note(t("ag.thresholds.note", l)))
+                L(gr.Dataframe(calibration_table(lang0), wrap=True, max_height=360,
+                               interactive=False), calibration_table)
+                L(gr.Markdown(f"### {t('ag.dossiers', lang0)}"),
+                  lambda l: f"### {t('ag.dossiers', l)}")
+                L(gr.HTML(note(t("ag.dossiers.note", lang0))),
+                  lambda l: note(t("ag.dossiers.note", l)))
+                L(gr.Dataframe(dossier_table(lang0), wrap=True, max_height=360,
+                               interactive=False), dossier_table)
+                with L(gr.Accordion(t("ag.critic", lang0), open=True),
+                       lambda l: gr.Accordion(label=t("ag.critic", l), open=True)):
+                    L(gr.HTML(note(t("ag.critic.note", lang0))),
+                      lambda l: note(t("ag.critic.note", l)))
+                    gr.Markdown(S.text("review_notes.md", "—"))
+                with L(gr.Accordion(t("ag.log", lang0), open=False),
+                       lambda l: gr.Accordion(label=t("ag.log", l), open=False)):
+                    gr.Markdown(S.text("agent_log.md", "—"))
+                with L(gr.Accordion(t("ag.requests", lang0), open=False),
+                       lambda l: gr.Accordion(label=t("ag.requests", l), open=False)):
+                    gr.Markdown(S.text("data_requests.md", "—"))
 
-            def show_cluster(cid, amounts):
-                cid = int(cid)
-                row = S.clusters[S.clusters["cluster_id"] == cid].iloc[0]
-                m = S.nodes[S.nodes["cluster_id"] == cid].sort_values(
-                    "priority_score", ascending=False)
-                info = (f"<div class='hero'><h2>Group {cid}</h2><p>"
-                        f"<b>{int(row['n_nodes'])}</b> accounts · "
-                        f"<b>{int(row['n_seed'])}</b> known seeds · "
-                        f"<b>{kzt(row['sum_kzt_internal'], True)}</b> moving "
-                        f"inside the group</p></div>"
-                        + note(f"<b>Hypothesis.</b> {row['hypothesis']}"))
-                table = pd.DataFrame({
-                    "Account": m["gid"], "Role": m["role"],
-                    "Priority": m["priority_score"].round(3),
-                    "Evidence": m["evidence"]}).reset_index(drop=True)
-                return info, cluster_html(cid, amounts), table
+            # -------------------------------------------------------- data
+            with L(gr.Tab(t("tab.data", lang0)),
+                   lambda l: gr.Tab(label=t("tab.data", l))):
+                L(gr.HTML(hero(t("data.title", lang0), t("data.lead", lang0))),
+                  lambda l: hero(t("data.title", l), t("data.lead", l)))
+                L(gr.HTML(note(t("purpose.data", lang0))),
+                  lambda l: note(t("purpose.data", l)))
+                L(gr.Markdown(f"### {t('data.files', lang0)}"),
+                  lambda l: f"### {t('data.files', l)}")
+                L(gr.HTML(ingest_summary(lang0)), ingest_summary)
+                L(gr.Markdown(f"### {t('data.mapping', lang0)}"),
+                  lambda l: f"### {t('data.mapping', l)}")
+                L(gr.HTML(note(t("data.mapping.note", lang0))),
+                  lambda l: note(t("data.mapping.note", l)))
+                L(gr.Dataframe(mapping_table(lang0), wrap=True, max_height=340,
+                               interactive=False), mapping_table)
+                L(gr.HTML(note(t("data.own", lang0))),
+                  lambda l: note(t("data.own", l)))
+                with L(gr.Accordion(t("data.profile", lang0), open=False),
+                       lambda l: gr.Accordion(label=t("data.profile", l), open=False)):
+                    gr.Markdown(S.text("profile_report.md", "—"))
 
-            c_info, c_map, c_members = show_cluster(first_cluster, False)
-            cl_info = gr.HTML(c_info)
-            gr.HTML(READING_GUIDE)
-            cl_map = gr.HTML(c_map)
-            cl_members = gr.Dataframe(c_members, label="Accounts in this group",
-                                      max_height=300, interactive=False)
+            # -------------------------------------------------------- cost
+            with L(gr.Tab(t("tab.cost", lang0)),
+                   lambda l: gr.Tab(label=t("tab.cost", l))):
+                L(gr.HTML(hero(t("cost.title", lang0), t("cost.lead", lang0))),
+                  lambda l: hero(t("cost.title", l), t("cost.lead", l)))
+                L(gr.HTML(note(t("purpose.cost", lang0))),
+                  lambda l: note(t("purpose.cost", l)))
+                L(gr.HTML(trace_kpis(lang0)), trace_kpis)
+                L(gr.HTML(note(t("cost.note", lang0))),
+                  lambda l: note(t("cost.note", l)))
+                gr.Markdown(S.text(CFG["tracing"].get("write_markdown")
+                                   or "run_trace.md", "—"))
 
-            cl.change(show_cluster, [cl, cl_amt], [cl_info, cl_map, cl_members])
-            cl_amt.change(show_cluster, [cl, cl_amt], [cl_info, cl_map, cl_members])
+            # --------------------------------------------------- downloads
+            with L(gr.Tab(t("tab.downloads", lang0)),
+                   lambda l: gr.Tab(label=t("tab.downloads", l))):
+                L(gr.HTML(hero(t("dl.title", lang0), t("dl.lead", lang0))),
+                  lambda l: hero(t("dl.title", l), t("dl.lead", l)))
+                L(gr.HTML(note(t("purpose.downloads", lang0))),
+                  lambda l: note(t("purpose.downloads", l)))
+                names = ["nodes_roles.csv", "clusters.csv", "top_nodes.csv",
+                         "node_features.parquet", "graph_edges.parquet",
+                         "profile_report.md", "data_requests.md",
+                         "review_notes.md", "agent_log.md", "dossiers.json",
+                         "ingest_report.json", "run_trace.md", "run_trace.json"]
+                L(gr.File([str(OUT / n) for n in names if (OUT / n).exists()],
+                          label=t("dl.button", lang0), interactive=False,
+                          file_count="multiple"),
+                  lambda l: gr.update(label=t("dl.button", l)))
+                L(gr.HTML(note(t("dl.note", lang0))),
+                  lambda l: note(t("dl.note", l)))
+                L(gr.Dataframe(S.nodes.head(40), wrap=True, max_height=330,
+                               label=t("dl.preview", lang0), interactive=False),
+                  lambda l: gr.update(label=t("dl.preview", l)))
 
-        # ------------------------------------------------------------- 5. ask
-        with gr.Tab("Ask"):
-            gr.HTML("<div class='hero'><h2>Ask about the network</h2><p>Questions "
-                    "in plain English. The answer is assembled only from "
-                    "deterministic queries against the graph — expand the "
-                    "disclosure under any answer to see exactly which ones."
-                    "</p></div>")
-            gr.HTML(note(
-                "Without a model configured this still works: the same queries "
-                "run, the phrasing is just plainer. Nothing here can invent an "
-                "account number — one that does not exist is dropped."))
-            chat = gr.Chatbot(type="messages", height=420, allow_tags=True,
-                              show_label=False)
-            q = gr.Textbox(label="Your question", show_label=False,
-                           placeholder="e.g. who collects money from these five? "
-                                       "1234; 5678; …")
-            with gr.Row():
-                send = gr.Button("Ask", variant="primary")
-                clear = gr.Button("Clear")
-            gr.Examples([
-                "Which accounts should I review first, and why?",
-                "Which collection points sit at the edge of the export?",
-                "What would I need to request to see past the fourth hop?",
-            ], inputs=q, label="Try one of these")
-            send.click(ask_agent, [q, chat], [chat, q])
-            q.submit(ask_agent, [q, chat], [chat, q])
-            clear.click(lambda: ([], ""), None, [chat, q])
-
-        # ---------------------------------------------------------- 6. agents
-        with gr.Tab("How it decided"):
-            gr.HTML("<div class='hero'><h2>The agent crew, and what it was "
-                    "allowed to do</h2><p>AI agents chose <b>what to examine and "
-                    "what the thresholds should be</b>. A deterministic rule "
-                    "engine decided <b>every role, score, cluster and rank</b>. "
-                    "No agent can change a classification.</p></div>")
-
-            calib = calibration_table()
-            if calib is not None and not calib.empty:
-                gr.Markdown("### Thresholds the calibrator agent chose")
-                gr.HTML(note(
-                    "The agent read the real distribution of every metric and "
-                    "picked these numbers, writing a justification for each. "
-                    "Before being accepted, each set was <b>simulated against "
-                    "the actual data</b> — a set that emptied a role, or handed "
-                    "one role half the network, is rejected and the hand-set "
-                    "defaults stand. The result is saved and reused, so the run "
-                    "reproduces exactly."))
-                gr.Dataframe(calib, wrap=True, max_height=380, interactive=False)
-
-            dossiers = dossier_table()
-            if not dossiers.empty:
-                gr.Markdown("### Case dossiers")
-                gr.HTML(note(
-                    "For each top account, an agent ran a multi-step "
-                    "investigation using only graph queries. It is required to "
-                    "offer a plausible <b>innocent</b> explanation — a payroll "
-                    "account and a collection point look identical in this data."))
-                gr.Dataframe(dossiers, wrap=True, max_height=380, interactive=False)
-
-            with gr.Accordion("The argument against this shortlist", open=True):
-                gr.HTML(note(
-                    "A reviewer agent was asked to attack the results: which "
-                    "entries rank highly because of how the data was collected, "
-                    "which thresholds are doing suspicious work, what is missing. "
-                    "With no ground truth to validate against, this is the "
-                    "closest thing to a check that exists."))
-                gr.Markdown(S.text("review_notes.md", "*The critic did not run.*"))
-            with gr.Accordion("Full audit log — every agent action and tool call",
-                              open=False):
-                gr.Markdown(S.text("agent_log.md", "*No agent log.*"))
-            with gr.Accordion("What data is missing, and what to request next",
-                              open=False):
-                gr.Markdown(S.text("data_requests.md", "*Not generated.*"))
-
-        # ------------------------------------------------------------ 7. data
-        with gr.Tab("Your data"):
-            gr.HTML("<div class='hero'><h2>What was loaded</h2><p>This tool does "
-                    "not require the three files from the case pack. It reads "
-                    "whatever tabular export you point it at and works out which "
-                    "column is which.</p></div>")
-            gr.Markdown("### Files used in this run")
-            gr.HTML(ingest_summary())
-            gr.Markdown("### How each column was understood")
-            gr.HTML(note(
-                "Columns are matched by name first (an alias list covers "
-                "<code>from</code>/<code>payer</code>/<code>src</code>, "
-                "<code>amount</code>/<code>sum_kzt</code>/<code>value</code>, and "
-                "so on), then by structure — a date column is the date, the "
-                "integer pair whose values overlap is the two ends of a transfer. "
-                "Anything still unresolved is passed to an agent, whose answer is "
-                "<b>re-checked against the data</b> before it is accepted."))
-            gr.Dataframe(mapping_table(), wrap=True, max_height=340,
-                         interactive=False)
-            gr.HTML(note(
-                "<b>To run this on your own export:</b> put the files in a folder "
-                "and run <code>./agent_run.sh --data /path/to/folder</code>. "
-                "Parquet, CSV, TSV, JSON, JSONL and XLSX are all read. If there "
-                "is no account list, it is derived from the transfers; if there "
-                "is no hop number, it is recomputed; if there is no seed flag, "
-                "accounts with no traced inflow are treated as seeds — and the "
-                "report says so, because that assumption drives every role."))
-            with gr.Accordion("Full data profile — every announced fact checked",
-                              open=False):
-                gr.Markdown(S.text("profile_report.md", "*Not generated.*"))
-
-        # ----------------------------------------------------------- 8. trace
-        with gr.Tab("Cost & timing"):
-            gr.HTML("<div class='hero'><h2>What this run cost</h2><p>Every stage "
-                    "timed, every token counted, every call priced.</p></div>")
-            gr.HTML(trace_kpis())
-            gr.HTML(note(
-                "Token counts are exactly what the provider reported — never "
-                "estimated. If a model has no rates configured, the spend reads "
-                "<b>unpriced</b> rather than showing a number that looks "
-                "authoritative."))
-            gr.Markdown(S.text(CFG["tracing"].get("write_markdown") or "run_trace.md",
-                               "*No trace file.*"))
-
-        # --------------------------------------------------------- 9. exports
-        with gr.Tab("Downloads"):
-            gr.HTML("<div class='hero'><h2>Deliverables</h2><p>The three required "
-                    "exports, plus everything the viewer reads.</p></div>")
-            names = ["nodes_roles.csv", "clusters.csv", "top_nodes.csv",
-                     "node_features.parquet", "graph_edges.parquet",
-                     "profile_report.md", "data_requests.md", "review_notes.md",
-                     "agent_log.md", "dossiers.json", "ingest_report.json",
-                     "run_trace.md", "run_trace.json"]
-            gr.File([str(OUT / n) for n in names if (OUT / n).exists()],
-                    label="Download", interactive=False, file_count="multiple")
-            gr.HTML(note(
-                "<b>nodes_roles.csv</b> — one row per account: role, confidence, "
-                "group, priority and the evidence sentence.<br>"
-                "<b>clusters.csv</b> — one row per group, with its hypothesis.<br>"
-                "<b>top_nodes.csv</b> — the ranked shortlist with reasons."))
-            gr.Dataframe(S.nodes.head(40), wrap=True, max_height=330,
-                         label="nodes_roles.csv — first 40 rows", interactive=False)
+        components = [c for c, _ in reg]
+        producers = [p for _, p in reg]
+        lang.change(lambda l: [p(l) for p in producers], lang, components)
 
     return demo
+
+
+def tab_guide_table(lang: str) -> pd.DataFrame:
+    """One row per tab: what it is for, and when to open it."""
+    return pd.DataFrame({
+        t("about.col.tab", lang): [t(key, lang) for key, _, _ in TAB_GUIDE],
+        t("about.col.for", lang): [w.get(lang, w["en"]) for _, w, _ in TAB_GUIDE],
+        t("about.col.when", lang): [w.get(lang, w["en"]) for _, _, w in TAB_GUIDE],
+    })
+
+
+def _rolekey(lang: str) -> str:
+    return ("<div class='legend'><h4>" + t("start.rolekey", lang) + "</h4>"
+            + "".join(f"<div class='row'><span class='sw' style='background:"
+                      f"{ROLE_COLORS.get(r)}'></span><b>{role_name(r, lang)}</b>"
+                      f"<span class='t'>— {role_meaning(r, lang)}</span></div>"
+                      for r in ROLE_COLORS) + "</div>")
 
 
 def _truthy(v: str | None) -> bool:
@@ -1005,6 +1085,5 @@ if __name__ == "__main__":
         server_name=a.host or os.environ.get("MONEYGRAPH_HOST") or VIEW["host"],
         server_port=int(a.port or os.environ.get("MONEYGRAPH_PORT") or VIEW["port"]),
         share=share, show_api=False, inbrowser=False, quiet=False,
-        # The network maps are written under output_files/_maps and served from
-        # there; without this Gradio refuses to hand them to the browser.
+        # The maps live under output_files/_maps and are served from there.
         allowed_paths=[str(OUT)])

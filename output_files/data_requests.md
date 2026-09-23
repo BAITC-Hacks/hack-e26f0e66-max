@@ -1,21 +1,11 @@
-# Data requests
+# Prioritized data requests
 
-## 1. Continue transfers beyond the visible frontier
-**Ask for:** Outgoing transfers at hop 5 for all **444 frontier accounts**, including the **25 listed frontier collectors**: 100000000018102100, 100000000299820100, 100000000369781100, 100000000375150100, 100000000404740100, 100000000424935100, 100000000470237100, 100000000500040100, 100000000542087100, 100000000557536100, 100000000561160100, 100000000581662100, 100000000581682100, 100000000600707100, 100000000608031100, 100000000627521100, 100000000634341100, 100000000655469100, 100000000673915100, 100000000704700100, 100000000733940100, 100000000737152100, 100000000803368100, 100000000926078100, 100000000957746100.  
-**Would resolve:** Whether the **56,672,164.68 KZT** received by frontier accounts moves onward or remains there; outflows are unknown beyond hop 4.
+1. **Frontier outflows:** Request outgoing transfers for all **444 frontier accounts** beyond the export’s **4-hop** limit, starting with accounts `100000000018102100`, `100000000299820100`, and `100000000369781100`. This would show whether funds continued beyond the visible graph; the accounts received **56,672,164.68 KZT** in the export, but their onward activity is unknown.
 
-## 2. Obtain inflows to seed accounts
-**Ask for:** Incoming transfers to all seed accounts for **2026-07-01 through 2026-07-31**. Prioritize the **42 seeds with no traced inflow**, including the **19 with no transfers at all**.  
-**Would resolve:** Whether funds entered the visible transfer paths from outside the export.
+2. **Seed inflows and missing activity:** Request incoming transfers for all seed accounts from **2026-07-01 to 2026-07-31**, and complete transfer histories for the **19 seeds** with no transfers shown. This would help explain why **42 seeds** have no traced inflow and whether the apparently inactive seeds had activity outside the export.
 
-## 3. Include transfers below the amount floor
-**Ask for:** Transfers of **any amount**, including those below **5,000 KZT**, for the seed accounts and frontier accounts.  
-**Would resolve:** Whether activity excluded by the export’s amount floor changes the observed patterns.
+3. **Transfers below the floor:** Request transfers regardless of amount for the frontier and seed accounts, including those below **5,000 KZT**. This would test whether the amount floor hides activity relevant to their apparent flow patterns.
 
-## 4. Check connections among components
-**Ask for:** Transfers linking accounts across the **35 components**, including transfers through accounts not in the current export.  
-**Would resolve:** Whether the components are connected outside the visible data or remain separate in the requested records.
+4. **Links between components:** Request transfers involving accounts in the **35 components**, including intermediary accounts absent from the export. This would test whether the components are separate or connected through unobserved accounts.
 
-## 5. Extend the time period
-**Ask for:** The same transfer data for the two months preceding **2026-07-01**.  
-**Would resolve:** Whether the July patterns recur over time or appear limited to the reported period.
+5. **Activity outside the period:** Request the same transfer data for the frontier and seed accounts outside **2026-07-01 to 2026-07-31**. This would help distinguish recurring patterns from activity limited to the exported period.

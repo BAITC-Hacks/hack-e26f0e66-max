@@ -26,6 +26,7 @@ Output: `output_files/run_trace.json` (machine-readable) and
 from __future__ import annotations
 
 import json
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -117,6 +118,10 @@ class RunTracer:
         self.max_usd = budget.get("max_usd")
         self.max_total_tokens = budget.get("max_total_tokens")
 
+        # Agents may run concurrently, so every mutation of the trace is
+        # guarded. A cost figure assembled from a racy counter is not a cost
+        # figure.
+        self._lock = threading.RLock()
         self.root = Stage(name="run", started_at=time.perf_counter())
         self._stack: list[Stage] = [self.root]
         self.warnings: list[str] = []
@@ -151,12 +156,16 @@ class RunTracer:
                 )
 
     def note(self, text: str) -> None:
-        self._stack[-1].notes.append(text)
+        with self._lock:
+            self._stack[-1].notes.append(text)
 
     def note_warning(self, text: str) -> None:
-        self.warnings.append(text)
-        if self.print_live:
-            print(f"  ! {text}")
+        with self._lock:
+            if text in self.warnings:
+                return                 # concurrent agents hit the same wall
+            self.warnings.append(text)
+            if self.print_live:
+                print(f"  ! {text}")
 
     @property
     def elapsed_s(self) -> float:
@@ -219,8 +228,9 @@ class RunTracer:
         return call
 
     def record_llm(self, call: LLMCall) -> LLMCall:
-        self.price_call(call.model, call)
-        self._stack[-1].llm_calls.append(call)
+        with self._lock:
+            self.price_call(call.model, call)
+            self._stack[-1].llm_calls.append(call)
         if self.print_live:
             cost = (f"${call.cost_usd:.4f}" if call.cost_usd is not None else "unpriced")
             if call.cost_usd is not None and call.pricing_tier == "long":
@@ -238,25 +248,32 @@ class RunTracer:
     # ------------------------------------------------------------- budget
 
     def check_budget(self) -> None:
-        """Set `budget_stopped` once any ceiling is passed. Never raises here."""
-        if self.budget_stopped:
-            return
-        t = self.totals()
-        if self.max_calls is not None and t["n_calls"] >= self.max_calls:
-            self.budget_stopped = f"call ceiling reached ({self.max_calls})"
-        elif self.max_total_tokens is not None and t["total_tokens"] >= self.max_total_tokens:
-            self.budget_stopped = f"token ceiling reached ({self.max_total_tokens:,})"
-        elif (
-            self.max_usd is not None
-            and t["cost_usd"] is not None
-            and t["cost_usd"] >= float(self.max_usd)
-        ):
-            self.budget_stopped = f"spend ceiling reached (${float(self.max_usd):.2f})"
-        if self.budget_stopped:
+        """Set `budget_stopped` once any ceiling is passed. Never raises here.
+
+        The whole decision is taken under the lock so that concurrent agents
+        cannot each read a pre-limit total and all proceed past the ceiling.
+        """
+        with self._lock:
+            if self.budget_stopped:
+                return
+            t = self.totals()
+            if self.max_calls is not None and t["n_calls"] >= self.max_calls:
+                self.budget_stopped = f"call ceiling reached ({self.max_calls})"
+            elif (self.max_total_tokens is not None
+                  and t["total_tokens"] >= self.max_total_tokens):
+                self.budget_stopped = (f"token ceiling reached "
+                                       f"({self.max_total_tokens:,})")
+            elif (self.max_usd is not None and t["cost_usd"] is not None
+                  and t["cost_usd"] >= float(self.max_usd)):
+                self.budget_stopped = (f"spend ceiling reached "
+                                       f"(${float(self.max_usd):.2f})")
+            stopped = self.budget_stopped
+
+        if stopped:
             self.note_warning(
-                f"agent layer stopped: {self.budget_stopped}. "
-                f"The run continues deterministically; all exports are still produced."
-            )
+                f"agent layer stopped: {stopped}. "
+                f"The run continues deterministically; all exports are still "
+                f"produced.")
 
     def agents_allowed(self) -> bool:
         return self.budget_stopped is None
