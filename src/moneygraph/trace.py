@@ -54,8 +54,10 @@ class LLMCall:
     output_tokens: int = 0
     reasoning_tokens: int = 0
     cached_input_tokens: int = 0
+    cache_write_tokens: int = 0     # only if the provider reports cache creation
     cost_usd: float | None = None   # None = no price configured for this model
     priced: bool = False
+    pricing_tier: str = ""          # short | long — which rate card was applied
     usage_reported: bool = True
     ok: bool = True
     error: str | None = None
@@ -105,7 +107,11 @@ class RunTracer:
         self.max_runtime_s: float = float(tcfg.get("max_runtime_s", 300))
         self.stage_warn_share: float = float(tcfg.get("stage_warn_share", 0.25))
 
-        self.pricing: dict[str, dict] = lcfg.get("pricing", {}) or {}
+        pricing = dict(lcfg.get("pricing", {}) or {})
+        # A scalar knob living alongside the per-model cards.
+        self.long_context_threshold: int = int(
+            pricing.pop("long_context_threshold_tokens", 0) or 0)
+        self.pricing: dict[str, dict] = pricing
         budget = lcfg.get("budget", {}) or {}
         self.max_calls = budget.get("max_calls")
         self.max_usd = budget.get("max_usd")
@@ -158,30 +164,67 @@ class RunTracer:
 
     # ---------------------------------------------------------------- llm
 
+    def rates_for(self, model: str, input_tokens: int) -> tuple[dict, str] | None:
+        """The rate card that applies to one call.
+
+        A model may be priced flat (`{input, output, ...}`) or in two context
+        tiers (`{short: {...}, long: {...}}`). Which tier applies is decided by
+        the call's own input size against `long_context_threshold_tokens`.
+        """
+        card = self.pricing.get(model)
+        if not card:
+            return None
+        if "short" in card or "long" in card:
+            tier = ("long" if (self.long_context_threshold
+                               and input_tokens >= self.long_context_threshold)
+                    else "short")
+            rates = card.get(tier) or card.get("short") or card.get("long")
+            if not rates:
+                return None
+        else:
+            rates, tier = card, "flat"
+        if rates.get("input") is None or rates.get("output") is None:
+            return None
+        return rates, tier
+
     def price_call(self, model: str, call: LLMCall) -> LLMCall:
         """Attach a cost, or leave it None when the model has no price set."""
-        p = self.pricing.get(model)
-        if not p or p.get("input") is None or p.get("output") is None:
-            call.cost_usd, call.priced = None, False
+        found = self.rates_for(model, call.input_tokens)
+        if found is None:
+            call.cost_usd, call.priced, call.pricing_tier = None, False, ""
             return call
-        cached_rate = p.get("cached_input")
+        rates, tier = found
+        per = TOKENS_PER_PRICE_UNIT
+
+        # Cached tokens are a subset of the reported input count, so they are
+        # charged once, at the cached rate.
         fresh_input = max(call.input_tokens - call.cached_input_tokens, 0)
-        cost = fresh_input * float(p["input"]) / TOKENS_PER_PRICE_UNIT
-        if cached_rate is not None:
-            cost += call.cached_input_tokens * float(cached_rate) / TOKENS_PER_PRICE_UNIT
-        else:
-            # No cached rate configured: charge cached tokens at the full rate,
-            # which over-states rather than under-states the bill.
-            cost += call.cached_input_tokens * float(p["input"]) / TOKENS_PER_PRICE_UNIT
-        cost += call.output_tokens * float(p["output"]) / TOKENS_PER_PRICE_UNIT
-        call.cost_usd, call.priced = cost, True
+        cost = fresh_input * float(rates["input"]) / per
+
+        cached_rate = rates.get("cached_input")
+        # No cached rate configured: charge them at the full input rate, which
+        # over-states rather than under-states the bill.
+        cost += (call.cached_input_tokens
+                 * float(cached_rate if cached_rate is not None else rates["input"]) / per)
+
+        # Only charged when the provider actually reported cache-creation
+        # tokens. Never inferred: a cache write we cannot observe is not a
+        # charge we are entitled to invent.
+        write_rate = rates.get("cache_write")
+        if call.cache_write_tokens and write_rate is not None:
+            cost += call.cache_write_tokens * float(write_rate) / per
+
+        cost += call.output_tokens * float(rates["output"]) / per
+        call.cost_usd, call.priced, call.pricing_tier = cost, True, tier
         return call
 
     def record_llm(self, call: LLMCall) -> LLMCall:
         self.price_call(call.model, call)
         self._stack[-1].llm_calls.append(call)
         if self.print_live:
-            cost = f"${call.cost_usd:.4f}" if call.cost_usd is not None else "unpriced"
+            cost = (f"${call.cost_usd:.4f}" if call.cost_usd is not None else "unpriced")
+            if call.cost_usd is not None and call.pricing_tier == "long":
+                cost += " (long-context rate)"
             status = "ok" if call.ok else f"FAILED: {call.error}"
             print(
                 f"      · {call.agent}/{call.purpose}: {call.duration_s:.2f}s, "
@@ -234,6 +277,8 @@ class RunTracer:
             "output_tokens": sum(c.output_tokens for c in calls),
             "reasoning_tokens": sum(c.reasoning_tokens for c in calls),
             "cached_input_tokens": sum(c.cached_input_tokens for c in calls),
+            "cache_write_tokens": sum(c.cache_write_tokens for c in calls),
+            "long_context_calls": sum(1 for c in calls if c.pricing_tier == "long"),
             "total_tokens": sum(c.total_tokens for c in calls),
             "llm_seconds": sum(c.duration_s for c in calls),
             "cost_usd": sum(c.cost_usd for c in priced) if priced else (None if unpriced else 0.0),
@@ -333,6 +378,9 @@ class RunTracer:
                 f"{t['cached_input_tokens']:,} cached)",
                 f"- Spend: {cost_txt}",
             ]
+            if t.get("long_context_calls"):
+                lines.append(f"- Priced at the long-context rate: "
+                             f"**{t['long_context_calls']}** call(s)")
             if t["n_unpriced_calls"]:
                 lines += [
                     "",

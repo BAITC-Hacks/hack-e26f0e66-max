@@ -2,13 +2,23 @@
 #
 # Money Graph — one command, start to finish.
 #
-#   ./go.sh                  install -> pipeline -> verify -> viewer with share link
-#   ./go.sh --offline        no model calls at all (deterministic, zero cost)
-#   ./go.sh --recalibrate    re-run the calibrator agent instead of reusing its file
-#   ./go.sh --no-app         stop after the exports are verified
-#   ./go.sh --no-share       viewer on localhost only, no public link
-#   ./go.sh --skip-install   assume dependencies are already present
-#   ./go.sh --port 7861      viewer port
+#   ./agent_run.sh                 install -> pipeline -> verify -> viewer + share link
+#
+# Choosing a model:
+#   ./agent_run.sh                 uses .env — OpenAI key, or a self-hosted
+#                                  OpenAI-compatible server via MONEYGRAPH_BASE_URL
+#   ./agent_run.sh --offline       no model at all; every agent falls back to its
+#                                  deterministic path, exports are identical
+#   ./agent_run.sh --use-existing  skip the pipeline entirely and open the viewer
+#                                  on the results already in the output folder
+#
+# Other options:
+#   --recalibrate    re-run the calibrator agent instead of reusing its saved file
+#   --no-app         stop after the exports are verified
+#   --no-share       viewer on localhost only, no public link
+#   --skip-install   assume dependencies are already present
+#   --data DIR       read input from DIR instead of the configured folder
+#   --port N         viewer port
 #
 # Exit codes: 0 all good · 1 pipeline failed · 2 exports missing or malformed
 #             3 environment problem
@@ -20,13 +30,16 @@ cd "$ROOT"
 
 # ----------------------------------------------------------------- options
 OFFLINE=0; RECALIBRATE=0; RUN_APP=1; SHARE=1; SKIP_INSTALL=0; PORT=""
+USE_EXISTING=0; DATA_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --offline)      OFFLINE=1 ;;
+    --use-existing) USE_EXISTING=1 ;;
     --recalibrate)  RECALIBRATE=1 ;;
     --no-app)       RUN_APP=0 ;;
     --no-share)     SHARE=0 ;;
     --skip-install) SKIP_INSTALL=1 ;;
+    --data)         DATA_DIR="${2:-}"; shift ;;
     --port)         PORT="${2:-}"; shift ;;
     -h|--help)      sed -n '2,/^[^#]/p' "$0" | grep '^#' | sed 's/^#\{1\} \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (try --help)" >&2; exit 3 ;;
@@ -51,6 +64,7 @@ info()  { printf '  %s%s%s\n' "$DIM" "$1" "$R"; }
 rule()  { printf '%s%s%s\n' "$DIM" "────────────────────────────────────────────────────────────────" "$R"; }
 
 TOTAL_STEPS=5; [[ $RUN_APP -eq 1 ]] && TOTAL_STEPS=6
+[[ $USE_EXISTING -eq 1 ]] && TOTAL_STEPS=$((TOTAL_STEPS - 1))
 
 LOG_DIR=".run_logs"; mkdir -p "$LOG_DIR"
 PIPELINE_LOG="$LOG_DIR/pipeline.log"
@@ -142,15 +156,39 @@ PY
   )"
   if [[ -n "$KEY" ]]; then
     HAVE_KEY=1
-    MODEL="$("$VPY" -c "import yaml;print(yaml.safe_load(open('config.yaml'))['llm']['model'])" 2>/dev/null || echo "?")"
-    EFFORT="$("$VPY" -c "import yaml;print(yaml.safe_load(open('config.yaml'))['llm']['reasoning_effort'])" 2>/dev/null || echo "?")"
-    ok "key found — crew will run on ${B}${MODEL}${R} (reasoning: ${EFFORT})"
-    PRICED="$("$VPY" -c "
-import yaml
-c=yaml.safe_load(open('config.yaml'))
-p=(c['llm'].get('pricing') or {}).get(c['llm']['model']) or {}
-print('yes' if p.get('input') is not None and p.get('output') is not None else 'no')" 2>/dev/null || echo no)"
-    [[ "$PRICED" == "no" ]] && warn "no pricing set for $MODEL — tokens will be exact, spend will read 'unpriced'"
+    # Ask the client itself, so the banner can never disagree with what runs.
+    read -r MODEL ENDPOINT EFFORT <<<"$("$VPY" - <<'PY' 2>/dev/null || echo "? ? ?"
+import sys, yaml
+sys.path.insert(0, "src")
+from moneygraph.agents.llm import LLMClient
+from moneygraph.trace import RunTracer
+cfg = yaml.safe_load(open("config.yaml"))
+c = LLMClient(cfg, RunTracer({**cfg, "tracing": {"print_live": False}}))
+print(c.model, c.base_url or "api.openai.com", c.reasoning_effort or "-")
+PY
+)"
+    if [[ "$ENDPOINT" == "api.openai.com" ]]; then
+      ok "key found — crew will run on ${B}${MODEL}${R} (reasoning: ${EFFORT})"
+    else
+      ok "self-hosted model: ${B}${MODEL}${R} at ${B}${ENDPOINT}${R}"
+    fi
+    # Asked through the tracer itself, so the check and the billing can never
+    # disagree about whether a model is priced.
+    PRICED="$("$VPY" - <<'PY' 2>/dev/null || echo "no"
+import sys, yaml
+sys.path.insert(0, "src")
+from moneygraph.trace import RunTracer
+cfg = yaml.safe_load(open("config.yaml"))
+t = RunTracer(cfg)
+found = t.rates_for(cfg["llm"]["model"], 0)
+print(f"{found[0]['input']}/{found[0]['output']}" if found else "no")
+PY
+)"
+    if [[ "$PRICED" == "no" ]]; then
+      warn "no pricing set for $MODEL — tokens will be exact, spend will read 'unpriced'"
+    else
+      info "priced at \$${PRICED%/*} in / \$${PRICED#*/} out per 1M tokens"
+    fi
   else
     export MONEYGRAPH_NO_LLM=1
     warn "no OPENAI_KEY in .env — running deterministically"
@@ -159,10 +197,24 @@ print('yes' if p.get('input') is not None and p.get('output') is not None else '
 fi
 
 # =============================================================== 4. pipeline
+if [[ $USE_EXISTING -eq 1 ]]; then
+  OUT_DIR="$("$VPY" -c "import yaml;print(yaml.safe_load(open('config.yaml'))['paths']['outputs'])")"
+  if [[ ! -f "$OUT_DIR/nodes_roles.csv" ]]; then
+    fail "--use-existing needs a previous run: no $OUT_DIR/nodes_roles.csv"
+    info "run it once without the flag to produce them"
+    exit 2
+  fi
+  WHEN="$(date -r "$OUT_DIR/nodes_roles.csv" "+%Y-%m-%d %H:%M" 2>/dev/null || echo "unknown")"
+  printf '\n%s[--]%s %sPipeline%s %s(skipped — reusing results from %s)%s\n' \
+    "$BLU" "$R" "$B" "$R" "$DIM" "$WHEN" "$R"
+  PIPE_RC=0
+  ELAPSED=0
+else
 step "Pipeline"
 rule
 PIPE_ARGS=()
 [[ $RECALIBRATE -eq 1 ]] && PIPE_ARGS+=(--recalibrate)
+[[ -n "$DATA_DIR" ]] && PIPE_ARGS+=(--data "$DATA_DIR")
 
 START_TS=$(date +%s)
 set +e
@@ -177,6 +229,7 @@ if [[ $PIPE_RC -ne 0 ]]; then
   exit 1
 fi
 ok "pipeline finished in ${ELAPSED}s"
+fi
 
 # ================================================================ 5. verify
 step "Deliverables"
@@ -338,7 +391,7 @@ for w in (d.get("warnings") or [])[:5]:
 PY
 
 if [[ $RUN_APP -eq 0 ]]; then
-  printf '\n%s✓ done.%s Open the viewer any time with: %s.venv/bin/python app/app.py --share%s\n\n' \
+  printf '\n%s✓ done.%s Open the viewer any time with: %s./agent_run.sh --use-existing%s\n\n' \
     "$GRN" "$R" "$B" "$R"
   exit 0
 fi
@@ -354,7 +407,10 @@ info "starting Gradio…"
 [[ $SHARE -eq 1 ]] && info "requesting a public share link (first run downloads a small helper)"
 
 : > "$APP_LOG"
-"$VPY" app/app.py ${APP_ARGS[@]+"${APP_ARGS[@]}"} >>"$APP_LOG" 2>&1 &
+# PYTHONUNBUFFERED: with stdout redirected to a file Python block-buffers, so
+# Gradio's "Running on local URL" line would not reach the log until it exits —
+# which is exactly when we need to read the URLs out of it.
+PYTHONUNBUFFERED=1 "$VPY" app/app.py ${APP_ARGS[@]+"${APP_ARGS[@]}"} >>"$APP_LOG" 2>&1 &
 APP_PID=$!
 
 LOCAL_URL=""; SHARE_URL=""
@@ -372,6 +428,13 @@ if ! kill -0 "$APP_PID" 2>/dev/null; then
   exit 1
 fi
 
+# Gradio should have printed it; if the line was swallowed, fall back to the
+# port we asked for rather than showing nothing.
+if [[ -z "$LOCAL_URL" ]]; then
+  FALLBACK_PORT="${PORT:-$("$VPY" -c "import yaml;print(yaml.safe_load(open('config.yaml'))['viewer']['port'])" 2>/dev/null || echo 7860)}"
+  LOCAL_URL="http://127.0.0.1:${FALLBACK_PORT}"
+fi
+
 printf '\n'
 rule
 printf '%s  Money Graph is up%s\n\n' "$B" "$R"
@@ -383,8 +446,10 @@ if [[ $SHARE -eq 1 ]]; then
     printf '    share    %snot ready yet — watch %s%s\n' "$YLW" "$APP_LOG" "$R"
   fi
 fi
-printf '\n    %sTabs:%s Overview · Priority list · Node search · Cluster map · Analyst · Agents · Run trace · Exports\n' "$DIM" "$R"
-printf '    %sDemo path:%s Node search → type a gid → role, the rule that produced it, and its money flows\n' "$DIM" "$R"
+printf '\n    %sTabs:%s Start here · Who to review first · Account detail · Groups ·\n' "$DIM" "$R"
+printf '          Ask · How it decided · Your data · Cost & timing · Downloads\n'
+printf '\n    %sDemo path:%s open %sAccount detail%s, paste a gid, and the page shows its role,\n' "$DIM" "$R" "$B" "$R"
+printf '               the exact rule that produced it, and a map of the money around it.\n' 
 printf '\n    %sCtrl+C to stop.%s\n' "$DIM" "$R"
 rule
 

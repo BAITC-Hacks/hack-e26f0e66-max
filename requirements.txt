@@ -1,20 +1,34 @@
 # Money Graph — pinned for reproducibility (guideline.md §4).
-# Core pipeline — no cloud, no GPU, no paid service required.
-pandas==3.0.6
+#
+# This set is resolved and installed, not hand-written: `gradio` caps pandas
+# below 3.0, so the whole stack sits on the pandas 2.x line. Re-resolve with
+#   pip install --dry-run --report - -r requirements.txt
+# before changing any pin.
+#
+# No cloud, no GPU, no paid service is required to reproduce the result.
+
+# --- core pipeline ---------------------------------------------------------
+pandas==2.3.3
 pyarrow==25.0.1
 numpy==2.5.3
 networkx==3.7
+# networkx delegates weighted pagerank to scipy; without it the call raises.
+scipy==1.18.1
 PyYAML==6.0.3
 
-# Viewer
-gradio==5.49.1
+# --- viewer ----------------------------------------------------------------
+# gradio is held below 6: app/app.py targets the 5.x Blocks API.
+gradio==5.50.0
 pyvis==0.3.2
-plotly==6.3.1
+# No charting library on purpose: the one chart in the viewer is drawn in CSS,
+# so there is no plotly.js/plotly.py version pair that has to agree with
+# Gradio's bundled front end.
 
-# Agent layer — optional at runtime. Without OPENAI_KEY every agent falls back
-# to its deterministic path, so the pipeline still produces all three exports.
-openai==2.6.1
-python-dotenv==1.1.1
+# --- agent layer -----------------------------------------------------------
+# Optional at runtime. Without OPENAI_KEY every agent falls back to its
+# deterministic path and the pipeline still produces all three exports.
+openai==3.19.0
+python-dotenv==1.2.3
 
-# Tests
+# --- tests -----------------------------------------------------------------
 pytest==9.1.1

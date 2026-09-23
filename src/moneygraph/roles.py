@@ -174,9 +174,11 @@ def _score_for(role: str, row, cfg: dict) -> float:
         floor = 1.0 - t["max_pass"]
         return _strength(kept, floor, 1.0, cfg)
     if role == "coordinator":
+        # Confidence grows with how many of its payers are themselves key
+        # accounts — that is what separates a controller from a busy collector.
         t = rc["coordinator"]
-        return _strength(row.seed_reach, t["min_seed_reach"],
-                         max(t["min_seed_reach"] * 3, t["min_seed_reach"] + 1), cfg)
+        return _strength(getattr(row, "n_key_payers", 0), t["min_key_payers"],
+                         t["min_key_payers"] * 3, cfg)
     return float(s["base"])
 
 
@@ -293,14 +295,26 @@ def _gate_description(role: str, row, rc: dict) -> str:
 
 def assign_coordinators(df: pd.DataFrame, edges: pd.DataFrame,
                         cfg: dict) -> pd.DataFrame:
-    """A node where money from several collectors, or from many separate courier
-    chains, converges is a candidate upper-level controller.
+    """A collection point that collects from other collection points.
 
-    This runs after pass 1 and after clustering because both inputs are
+    Three conditions, and all three are needed:
+
+    1. **It converges.** The node itself passes the consolidator gate. Being
+       *paid by* two collectors is not the same as being a collection point;
+       without this the rule promoted 264 nodes here, 103 of them `terminal`.
+    2. **Its payers are not couriers.** At least `min_key_payers` of them are
+       themselves consolidators, distributors or transit accounts.
+    3. **Many separate chains reach it.** `seed_reach` in the top decile —
+       expressed as a percentile, never an absolute, because the metric's range
+       depends entirely on how seed-dense the input is.
+
+    Runs after pass 1 and after clustering because both extra inputs are
     role-dependent: `n_key_payers` needs the payers' roles, `n_payer_clusters`
     needs their clusters.
     """
     t = cfg["roles"]["coordinator"]
+    cons_min = cfg["roles"]["consolidator"]["min_payers"]
+    require_convergence = bool(t.get("require_consolidator_gate", True))
     df = df.copy()
 
     role_by_gid = dict(zip(df["gid"], df["role"]))
@@ -316,10 +330,15 @@ def assign_coordinators(df: pd.DataFrame, edges: pd.DataFrame,
     ).fillna(0).astype("int64")
 
     reach_cut = float(df["seed_reach"].quantile(t["seed_reach_percentile"]))
+    reach_floor = float(df["seed_reach"].quantile(
+        t.get("min_seed_reach_percentile", 0.90)))
 
     for i, row in enumerate(df.itertuples(index=False)):
+        # Condition 1 gates both routes: a coordinator is a convergence point.
+        if require_convergence and row.in_deg < cons_min:
+            continue
         route_a = (row.n_key_payers >= t["min_key_payers"]
-                   and row.seed_reach >= t["min_seed_reach"])
+                   and row.seed_reach >= reach_floor)
         route_b = (row.seed_reach >= reach_cut
                    and row.n_payer_clusters >= t["min_payer_clusters"])
         if not (route_a or route_b):
@@ -328,9 +347,13 @@ def assign_coordinators(df: pd.DataFrame, edges: pd.DataFrame,
         if trace.role != "peripheral":
             trace.secondary_roles = sorted(set(trace.secondary_roles + [trace.role]))
         trace.role = "coordinator"
-        trace.gate = (
-            f"n_key_payers {row.n_key_payers} >= {t['min_key_payers']} and "
-            f"seed_reach {row.seed_reach} >= {t['min_seed_reach']}" if route_a else
+        convergence = (f"in_deg {row.in_deg} >= {cons_min} (collection point) and "
+                       if require_convergence else "")
+        trace.gate = convergence + (
+            f"{row.n_key_payers} payers are themselves collectors "
+            f"(>= {t['min_key_payers']}) and seed_reach {row.seed_reach} >= "
+            f"p{int(t.get('min_seed_reach_percentile', 0.9) * 100)} ({reach_floor:.0f})"
+            if route_a else
             f"seed_reach {row.seed_reach} >= p{int(t['seed_reach_percentile'] * 100)} "
             f"({reach_cut:.0f}) and payers span {row.n_payer_clusters} clusters"
         )
@@ -341,8 +364,9 @@ def assign_coordinators(df: pd.DataFrame, edges: pd.DataFrame,
         })
         trace.thresholds.update({
             "min_key_payers": t["min_key_payers"],
-            "min_seed_reach": t["min_seed_reach"],
-            "seed_reach_p99": round(reach_cut, 2),
+            "seed_reach_floor": round(reach_floor, 2),
+            "seed_reach_top": round(reach_cut, 2),
+            "min_payers_to_converge": cons_min if require_convergence else None,
         })
         trace.penalties = []
         trace.role_score = _apply_penalties(_score_for("coordinator", row, cfg),

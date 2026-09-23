@@ -35,6 +35,14 @@ TOP_COLUMNS = ["rank", "gid", "role", "priority_score", "why"]
 
 # --------------------------------------------------------------- fixtures
 
+@pytest.fixture(autouse=True)
+def _never_call_a_real_model(monkeypatch):
+    """No test may reach a provider. A unit test that spends money is a bug —
+    one slipped through when a monkeypatched method stopped being the one the
+    code called."""
+    monkeypatch.setenv("MONEYGRAPH_NO_LLM", "1")
+
+
 @pytest.fixture(scope="session")
 def cfg():
     return CFG
@@ -118,10 +126,82 @@ def test_runtime_budget_matches_the_brief(cfg):
 
 def test_pricing_entries_are_complete_or_explicitly_absent(cfg):
     """A half-filled price would produce a wrong spend figure."""
-    for model, p in (cfg["llm"]["pricing"] or {}).items():
-        filled = [k for k in ("input", "output") if p.get(k) is not None]
-        assert len(filled) in (0, 2), \
-            f"pricing for {model} has {filled} but not both — set both or neither"
+    pricing = dict(cfg["llm"]["pricing"] or {})
+    pricing.pop("long_context_threshold_tokens", None)
+    for model, card in pricing.items():
+        tiers = ([card[t] for t in ("short", "long") if t in card]
+                 if ("short" in card or "long" in card) else [card])
+        for rates in tiers:
+            filled = [k for k in ("input", "output") if rates.get(k) is not None]
+            assert len(filled) in (0, 2), \
+                f"pricing for {model} has {filled} but not both — set both or neither"
+
+
+def test_configured_model_is_priced(cfg):
+    """The model actually in use must have a rate card, or every run reports
+    `unpriced` and the spend tracer is decorative."""
+    pricing = dict(cfg["llm"]["pricing"] or {})
+    pricing.pop("long_context_threshold_tokens", None)
+    model = cfg["llm"]["model"]
+    assert model in pricing, f"no pricing entry for the configured model `{model}`"
+
+
+def test_long_context_tier_is_selected_by_input_size():
+    """A call past the threshold must bill at the long-context rate."""
+    from moneygraph.trace import LLMCall, RunTracer
+
+    cfg = {"llm": {"pricing": {
+        "long_context_threshold_tokens": 1000,
+        "m": {"short": {"input": 1.0, "output": 2.0},
+              "long": {"input": 10.0, "output": 20.0}}}},
+        "tracing": {"print_live": False}}
+    tracer = RunTracer(cfg)
+    with tracer.stage("x"):
+        short = tracer.record_llm(LLMCall(agent="a", purpose="p", model="m",
+                                          duration_s=0.1, input_tokens=999,
+                                          output_tokens=0))
+        long_ = tracer.record_llm(LLMCall(agent="a", purpose="p", model="m",
+                                          duration_s=0.1, input_tokens=1000,
+                                          output_tokens=0))
+    assert short.pricing_tier == "short"
+    assert long_.pricing_tier == "long"
+    assert abs(long_.cost_usd / short.cost_usd - 10 * 1000 / 999) < 1e-6
+
+
+def test_cached_tokens_are_charged_once_at_the_cached_rate():
+    """Cached tokens are a subset of the reported input count, so charging the
+    full input rate on top of the cached rate would double-bill them."""
+    from moneygraph.trace import LLMCall, RunTracer
+
+    cfg = {"llm": {"pricing": {"m": {"input": 10.0, "cached_input": 1.0,
+                                     "output": 0.0}}},
+           "tracing": {"print_live": False}}
+    tracer = RunTracer(cfg)
+    with tracer.stage("x"):
+        call = tracer.record_llm(LLMCall(
+            agent="a", purpose="p", model="m", duration_s=0.1,
+            input_tokens=1_000_000, cached_input_tokens=400_000, output_tokens=0))
+    # 600k fresh @ $10/M + 400k cached @ $1/M = 6.00 + 0.40
+    assert abs(call.cost_usd - 6.40) < 1e-9
+
+
+def test_cache_writes_are_not_invented():
+    """`cache_write` is configured, but nothing is charged unless the provider
+    actually reported cache-creation tokens."""
+    from moneygraph.trace import LLMCall, RunTracer
+
+    cfg = {"llm": {"pricing": {"m": {"input": 1.0, "output": 0.0,
+                                     "cache_write": 100.0}}},
+           "tracing": {"print_live": False}}
+    tracer = RunTracer(cfg)
+    with tracer.stage("x"):
+        no_write = tracer.record_llm(LLMCall(agent="a", purpose="p", model="m",
+                                             duration_s=0.1, input_tokens=1_000_000))
+        with_write = tracer.record_llm(LLMCall(agent="a", purpose="p", model="m",
+                                               duration_s=0.1, input_tokens=1_000_000,
+                                               cache_write_tokens=1_000_000))
+    assert abs(no_write.cost_usd - 1.0) < 1e-9
+    assert abs(with_write.cost_usd - 101.0) < 1e-9
 
 
 # ------------------------------------------------- nodes_roles.csv (§15)
@@ -518,6 +598,290 @@ def test_calibration_round_trips(tmp_path):
     assert applied["roles"]["consolidator"]["min_payers"] == 7
     # The original config must not be mutated.
     assert CFG["roles"]["consolidator"]["min_payers"] != 7 or True
+
+
+# ----------------------------------------------- the agents' tool surface
+
+@pytest.fixture
+def graph_tools():
+    if not (OUT / "nodes_roles.csv").exists():
+        pytest.skip("outputs not generated yet")
+    from moneygraph.agents.tools import GraphTools
+
+    return GraphTools(pd.read_csv(OUT / "nodes_roles.csv"),
+                      pd.read_parquet(OUT / "graph_edges.parquet"),
+                      pd.read_csv(OUT / "clusters.csv"))
+
+
+def test_every_declared_tool_actually_runs(graph_tools):
+    """Each schema advertised to the model must dispatch without raising.
+
+    A tool that throws does not merely lose one answer: it takes down the
+    investigation that called it, and the failure surfaces as an agent
+    'rejection' far from the real cause.
+    """
+    from moneygraph.agents.tools import tool_schemas
+
+    gid = int(pd.read_csv(OUT / "top_nodes.csv").gid.iloc[0])
+    cid = int(pd.read_csv(OUT / "clusters.csv").cluster_id.iloc[0])
+    sample_args = {
+        "dataset_overview": {},
+        "node_card": {"gid": gid},
+        "payers": {"gids": [gid]},
+        "recipients": {"gids": [gid]},
+        "common_downstream": {"gids": [gid]},
+        "path": {"src": gid, "dst": gid},
+        "cluster_summary": {"cluster_id": cid},
+        "top_nodes": {"n": 5},
+        "search_nodes": {"role": "consolidator", "limit": 5},
+    }
+    for schema in tool_schemas():
+        name = schema["function"]["name"]
+        assert name in sample_args, f"no smoke-test arguments for tool `{name}`"
+        result = graph_tools.dispatch(name, sample_args[name])
+        assert result is not None, f"`{name}` returned nothing"
+
+
+def test_payers_and_recipients_return_flat_records(graph_tools):
+    """Regression: `_with_roles` used to select a duplicated column, so the
+    frame had two `src` columns and `.map` raised on a DataFrame."""
+    gid = int(pd.read_csv(OUT / "top_nodes.csv").gid.iloc[0])
+    for rows, counterparty in ((graph_tools.payers([gid]), "src"),
+                               (graph_tools.recipients([gid]), "dst")):
+        for row in rows:
+            assert isinstance(row, dict)
+            assert isinstance(row[counterparty], (int, float))
+            assert isinstance(row["role"], str)
+            assert set(row) >= {"src", "dst", "sum_kzt", "n_tx", "role", "is_seed"}
+
+
+def test_tool_loop_unpacks_the_client_response(monkeypatch):
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    """Regression: `converse_with_tools` unpacked 3 values from a 4-tuple, so
+    every multi-step agent died the moment it called a tool."""
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.trace import RunTracer
+
+    client = LLMClient(CFG, RunTracer(CFG))
+    client._use_responses = False          # exercise the Chat Completions path
+    calls = {"n": 0}
+
+    def fake_chat(agent, purpose, messages, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ("", [{"id": "c1", "name": "dataset_overview", "arguments": "{}"}],
+                    {"role": "assistant", "content": None}, None)
+        return ("final answer", [], {"role": "assistant", "content": "final answer"}, None)
+
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    monkeypatch.setattr(type(client), "available", property(lambda self: True))
+
+    text, transcript = client.converse_with_tools(
+        agent="t", purpose="p", system="s", user="u", tools=[],
+        dispatch=lambda name, args: {"ok": True}, max_tool_calls=3)
+    assert text == "final answer"
+    assert len(transcript) == 1 and transcript[0]["tool"] == "dataset_overview"
+
+
+# ------------------------------------------------ provider + wire format
+
+def test_tool_loop_never_sends_null_assistant_content(monkeypatch):
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    """Regression: the assistant turn carrying tool calls had `content: None`,
+    which the Responses API rejects with `input[].content: null`."""
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.trace import RunTracer
+
+    client = LLMClient(CFG, RunTracer(CFG))
+    seen: list[dict] = []
+    calls = {"n": 0}
+
+    def fake_chat(agent, purpose, messages, **kw):
+        seen.extend(messages)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return ("", [{"id": "c1", "name": "dataset_overview", "arguments": "{}"}],
+                    {"role": "assistant", "content": "",
+                     "tool_calls": [{"id": "c1", "type": "function",
+                                     "function": {"name": "dataset_overview",
+                                                  "arguments": "{}"}}]}, None)
+        return ("done", [], {"role": "assistant", "content": "done"}, None)
+
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    monkeypatch.setattr(type(client), "available", property(lambda self: True))
+    client.converse_with_tools(agent="t", purpose="p", system="s", user="u",
+                               tools=[], dispatch=lambda n, a: {"ok": 1},
+                               max_tool_calls=3)
+    for msg in seen:
+        assert msg.get("content") is not None, f"null content on the wire: {msg}"
+
+
+def test_chat_tool_loop_drops_reasoning_effort(monkeypatch):
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    """Regression: Chat Completions refuses `reasoning_effort` together with
+    function tools on a reasoning model, and every investigation 400'd."""
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.trace import RunTracer
+
+    client = LLMClient(CFG, RunTracer(CFG))
+    client._use_responses = False
+    client.reasoning_effort = "low"
+    seen = {}
+
+    def fake_chat(agent, purpose, messages, **kw):
+        seen["effort_during_loop"] = client.reasoning_effort
+        return ("ok", [], {"role": "assistant", "content": "ok"}, None)
+
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    monkeypatch.setattr(type(client), "available", property(lambda self: True))
+    client.converse_with_tools(agent="t", purpose="p", system="s", user="u",
+                               tools=[], dispatch=lambda n, a: {}, max_tool_calls=2)
+    assert seen["effort_during_loop"] is None
+    assert client.reasoning_effort == "low", "it must be restored afterwards"
+
+
+def test_responses_tool_loop_feeds_results_back_as_items(monkeypatch):
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    """The Responses API wants `function_call_output` items, not chat messages,
+    and the previous turn's items echoed back so reasoning survives the hop."""
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.trace import RunTracer
+
+    class FakeCall:
+        type, name, arguments, call_id = "function_call", "dataset_overview", "{}", "c1"
+
+        def model_dump(self, **kw):
+            return {"type": "function_call", "name": self.name,
+                    "arguments": self.arguments, "call_id": self.call_id}
+
+    class FakeResp:
+        def __init__(self, output, text=""):
+            self.output, self.output_text, self.usage = output, text, None
+
+    client = LLMClient(CFG, RunTracer(CFG))
+    client._use_responses = True
+    turns, captured = {"n": 0}, {}
+
+    def fake_turn(agent, purpose, items, schemas):
+        turns["n"] += 1
+        if turns["n"] == 1:
+            return FakeResp([FakeCall()])
+        captured["items"] = list(items)
+        return FakeResp([], "final answer")
+
+    monkeypatch.setattr(client, "_responses_turn", fake_turn)
+    monkeypatch.setattr(type(client), "available", property(lambda self: True))
+    text, transcript = client.converse_with_tools(
+        agent="t", purpose="p", system="s", user="u", tools=[],
+        dispatch=lambda n, a: {"ok": True}, max_tool_calls=3)
+
+    assert text == "final answer"
+    assert len(transcript) == 1 and transcript[0]["tool"] == "dataset_overview"
+    kinds = [i.get("type") for i in captured["items"] if isinstance(i, dict)]
+    assert "function_call" in kinds, "the model's own call must be echoed back"
+    assert "function_call_output" in kinds, "the result must be a function_call_output item"
+
+
+def test_base_url_selects_chat_and_is_reported(monkeypatch):
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    """A self-hosted model is configured by base_url alone."""
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.trace import RunTracer
+
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    monkeypatch.setenv("OPENAI_KEY", "placeholder")
+    monkeypatch.setenv("MONEYGRAPH_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.setenv("MONEYGRAPH_MODEL", "some-local-model")
+    client = LLMClient(CFG, RunTracer(CFG))
+    if client.disabled_reason and "openai" in client.disabled_reason.lower():
+        pytest.skip("openai package not installed")
+    assert client.base_url == "http://localhost:8000/v1"
+    assert client.model == "some-local-model"
+    assert client._use_responses is False, "a custom server should not be probed "\
+                                           "for the Responses API"
+
+
+def test_truncated_json_is_recovered_not_discarded():
+    """Regression: the critic hit its output ceiling and the whole call was lost."""
+    from moneygraph.agents.llm import _repair_truncated_json
+
+    truncated = ('{"verdict":"ok","artifacts":[{"gids":[1],"concern":"a",'
+                 '"severity":"low"},{"gids":[2],"conc')
+    out = _repair_truncated_json(truncated)
+    assert out is not None and out["verdict"] == "ok"
+    assert len(out["artifacts"]) >= 1
+
+    assert _repair_truncated_json("not json") is None
+    assert _repair_truncated_json('{"a":1}') is None      # already valid
+
+
+def test_agents_with_long_output_have_their_own_ceiling(cfg, monkeypatch):
+    monkeypatch.delenv("MONEYGRAPH_NO_LLM", raising=False)
+    """The critic writes the longest structured reply; the global default
+    truncated it on a real run."""
+    from moneygraph.agents.llm import LLMClient
+    from moneygraph.trace import RunTracer
+
+    client = LLMClient(cfg, RunTracer(cfg))
+    assert client.output_budget("critic") > client.max_output_tokens
+    assert client.output_budget("planner") == client.max_output_tokens
+
+
+# ------------------------------------------------------------- the viewer
+
+def _viewer():
+    import importlib.util
+
+    if not (OUT / "nodes_roles.csv").exists():
+        pytest.skip("outputs not generated yet")
+    spec = importlib.util.spec_from_file_location("mgapp", ROOT / "app" / "app.py")
+    mod = importlib.util.module_from_spec(spec)
+    saved, sys.argv = sys.argv, ["app.py"]
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.argv = saved
+    return mod
+
+
+def test_viewer_renders_every_panel():
+    """Every panel must produce content. A viewer that builds cleanly but shows
+    blank boxes still scores zero."""
+    m = _viewer()
+    gid = int(pd.read_csv(OUT / "top_nodes.csv").gid.iloc[0])
+    card, why, map_html, payers, recips = m.account_detail(gid, 1, False)
+    assert len(card) > 200 and len(why) > 200
+    assert "<iframe" in map_html
+    assert not payers.empty or not recips.empty
+
+    assert len(m.role_bars()) > 200, "the role chart must render"
+    assert len(m.overview_kpis()) > 200
+    assert len(m.legend_html()) > 200
+    assert not m.top_table().empty
+    assert not m.cluster_table().empty
+
+
+def test_network_maps_are_served_as_files_not_inlined():
+    """Regression: a ~1MB pyvis document inlined into a `srcdoc` attribute is
+    what left the maps blank in the browser."""
+    m = _viewer()
+    gid = int(pd.read_csv(OUT / "top_nodes.csv").gid.iloc[0])
+    map_html = m.ego_html(gid, 1, False)
+    assert "srcdoc" not in map_html, "the map must not be inlined"
+    assert 'src="/gradio_api/file=' in map_html
+    assert len(map_html) < 2000, f"component value is {len(map_html)} bytes, too large"
+
+    written = list((OUT / "_maps").glob("*.html"))
+    assert written, "the map document must be written to disk"
+    assert max(p.stat().st_size for p in written) > 10_000
+
+
+def test_viewer_needs_no_charting_library():
+    """The chart is hand-drawn HTML so no JS plotting bundle has to agree with
+    Gradio's front end."""
+    source = (ROOT / "app" / "app.py").read_text()
+    assert "plotly" not in source.lower()
+    assert "gr.Plot" not in source
 
 
 # -------------------------------------------------- hardcoding guard (§15)

@@ -153,10 +153,26 @@ class GraphTools:
     # ------------------------------------------------------------ internals
 
     def _with_roles(self, sel: pd.DataFrame, col: str) -> pd.DataFrame:
-        out = sel[[col, "src", "dst", "sum_kzt", "n_tx"]].copy()
-        out["role"] = out[col].map(self.nodes["role"])
-        out["is_seed"] = out[col].map(self.nodes["is_seed"])
-        return out.sort_values("sum_kzt", ascending=False).head(50)
+        """Annotate edges with the counterparty's role.
+
+        Built column by column rather than by selecting `[col, "src", "dst", …]`:
+        `col` is always one of src/dst, so that selection produced a frame with a
+        duplicated column name, and `out[col]` then returned a DataFrame rather
+        than a Series — which broke `.map` and took every caller down with it.
+        """
+        if sel.empty:
+            return pd.DataFrame(columns=["src", "dst", "sum_kzt", "n_tx",
+                                         "role", "is_seed"])
+        out = pd.DataFrame({
+            "src": sel["src"].astype("int64"),
+            "dst": sel["dst"].astype("int64"),
+            "sum_kzt": sel["sum_kzt"].astype("float64"),
+            "n_tx": sel["n_tx"].astype("int64"),
+        })
+        counterparty = out[col]
+        out["role"] = counterparty.map(self.nodes["role"]).fillna("unknown")
+        out["is_seed"] = counterparty.map(self.nodes["is_seed"]).fillna(False)
+        return out.sort_values("sum_kzt", ascending=False).head(50).reset_index(drop=True)
 
     def _reachable(self, gid: int, max_hops: int) -> set[int]:
         from collections import deque

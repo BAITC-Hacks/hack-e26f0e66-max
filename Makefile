@@ -1,12 +1,15 @@
-.PHONY: go offline setup run run-nollm app profile test clean
+.PHONY: run offline existing setup pipeline app profile test clean
 
 # The one command. Installs, runs the pipeline, verifies the exports, reports
 # time/tokens/spend, then opens the viewer with a public share link.
-go:
-	./go.sh
+run:
+	./agent_run.sh
 
 offline:                  ## same, with no model calls at all
-	./go.sh --offline
+	./agent_run.sh --offline
+
+existing:                 ## skip the pipeline, open the viewer on the last run
+	./agent_run.sh --use-existing
 
 PY ?= .venv/bin/python
 
@@ -14,11 +17,8 @@ setup:
 	$(PY) -m pip install -r requirements.txt
 	@test -f .env || cp .env.example .env
 
-run:                      ## pipeline only: data/ -> output_files/
+pipeline:                 ## pipeline only: data/ -> output_files/
 	$(PY) run.py
-
-run-nollm:                ## pipeline only, forced deterministic
-	MONEYGRAPH_NO_LLM=1 $(PY) run.py
 
 recalibrate:              ## re-run the calibrator agent
 	$(PY) run.py --recalibrate

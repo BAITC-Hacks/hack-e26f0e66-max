@@ -129,7 +129,8 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
         with tracer.stage("agent:calibrator"):
             from .agents.calibrator_agent import apply_calibration
 
-            calibration = crew.calibrate(df, ds.max_depth, config_dir, recalibrate)
+            calibration = crew.calibrate(df, ds.max_depth, config_dir,
+                                         recalibrate, edges=ds.edges)
             if calibration:
                 cfg = apply_calibration(cfg, calibration)
 
@@ -229,6 +230,14 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
         ]
         export.write_text("dossiers.json",
                           _dossiers_json(crew.run_record.dossiers), out_dir)
+        # How each input file was read and what had to be derived. The viewer
+        # shows this so the claim "it accepts whatever export you have" is
+        # inspectable rather than asserted.
+        import json as _json
+
+        export.write_text("ingest_report.json",
+                          _json.dumps(ds.provenance, indent=2, ensure_ascii=False,
+                                      default=str), out_dir)
         for p in paths:
             print(f"     wrote {p.name}")
 
@@ -394,6 +403,14 @@ def _warn_degenerate(counts: dict[str, int], n: int, tracer: RunTracer) -> None:
             tracer.note_warning(
                 f"`{role}` claims {count} of {n} nodes ({100 * count / n:.0f}%) — "
                 f"the gate may be too loose to be informative")
+    # `coordinator` is the apex role: it should be a handful of accounts, not a
+    # tier. A 50% check would never catch a gate that promotes 12% of the graph.
+    n_coord = counts.get("coordinator", 0)
+    if n_coord > 0.02 * n:
+        tracer.note_warning(
+            f"`coordinator` claims {n_coord} of {n} nodes "
+            f"({100 * n_coord / n:.1f}%) — the apex role should be a handful of "
+            f"accounts; check that its convergence requirement is enabled")
 
 
 def _fmt_counts(counts: dict[str, int]) -> str:

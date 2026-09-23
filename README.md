@@ -10,7 +10,7 @@ It answers one question: **which of these 2,248 customers should I look at
 first, and why?**
 
 ```bash
-./go.sh
+./agent_run.sh
 ```
 
 That is the whole thing: it sets up the environment, runs the pipeline, verifies
@@ -22,14 +22,29 @@ with a public share link.
 ## Quick start
 
 ```bash
-./go.sh                  # everything: setup -> pipeline -> verify -> viewer + share link
-./go.sh --offline        # no model calls at all (deterministic, zero cost)
-./go.sh --no-app         # stop once the exports are verified
-./go.sh --no-share       # viewer on localhost only
-./go.sh --recalibrate    # re-run the calibrator agent
+./agent_run.sh                  # everything: setup -> pipeline -> verify -> viewer + share link
+./agent_run.sh --offline        # no model at all (deterministic, zero cost)
+./agent_run.sh --use-existing   # skip the pipeline, open the viewer on the last run
+./agent_run.sh --data ./my_export   # run on your own files
+./agent_run.sh --recalibrate    # re-run the calibrator agent
+./agent_run.sh --no-app         # stop once the exports are verified
+./agent_run.sh --no-share       # viewer on localhost only
 ```
 
-`go.sh` is self-contained — it finds a Python 3.10+, creates `.venv`, installs
+### Choosing a model
+
+Three setups, all through `.env` — no code changes:
+
+| | How |
+|---|---|
+| **OpenAI** | `OPENAI_KEY=sk-…` |
+| **Any OpenAI-compatible server** — vLLM, Ollama, llama.cpp, TGI, LM Studio, OpenRouter, Together, an internal gateway | `MONEYGRAPH_BASE_URL=http://localhost:8000/v1`, `MONEYGRAPH_MODEL=<name the server serves it under>`, `MONEYGRAPH_API_KEY=<placeholder if the server ignores it>`. Also set `llm.api: chat` in `config.yaml` and clear `reasoning_effort` unless your server accepts it. |
+| **No model** | `./agent_run.sh --offline`, or nothing in `.env` at all |
+
+For a local model, set its `llm.pricing` entry to `0` and the tracer reports
+`$0.00` honestly rather than `unpriced`.
+
+`agent_run.sh` is self-contained — it finds a Python 3.10+, creates `.venv`, installs
 `requirements.txt`, checks for a key, and degrades to offline mode if there
 isn't one. It exits `1` if the pipeline fails and `2` if any required CSV is
 missing or malformed, so it is safe to use in CI.
@@ -209,9 +224,33 @@ available. `MAX_DEPTH` is read from the data, never hardcoded.
 | `distributor` | `out_deg >= min_recipients` **and** `out_deg >= fan_ratio × max(in_deg,1)` | 10, 3× | `out_deg` p95 = 5, p99 = 24. 10 selects 64 nodes; the ratio term drops it to 56 and stops a busy hub being filed as a distributor. |
 | `transit` | both flow sides observed, `pass_ratio ∈ [0.8, 1.2]`, `in_deg < 5`, `out_deg < 10` | 0.8–1.2 | 70 non-seed nodes sit in the band (72 counting seeds, which we exclude). Confidence is boosted when ≥50% of the money moves within 2 days. |
 | `terminal` | outflow traced, `in_sum > 0`, `out_sum <= max_pass × in_sum` | 0.1 | **Never assigned at MAX_DEPTH.** Broad by nature — 1,143 nodes qualify, 1,079 with no outgoing edge at all — so it carries the second-lowest priority weight. |
-| `coordinator` | (`n_key_payers >= 2` **and** `seed_reach >= 5`) **or** (`seed_reach >= p99` **and** payers span ≥ 2 clusters) | 2, 5 | A node where money from several collectors, or from many separate courier chains, converges. Runs in a second pass because it needs its payers' roles and clusters. |
+| `coordinator` | passes the consolidator gate **and** `n_key_payers >= 2` **and** `seed_reach >= p90` | 2, p90 | A collection point that collects from **other** collection points. All three conditions are needed — see below. Runs in a second pass because it needs its payers' roles and clusters. **10 accounts (0.4%).** |
 | `cutoff` | `depth == MAX_DEPTH` and no other gate passed | — | Documented extension, switchable via `use_extended_roles`. Fixed confidence 0.7. Off → these become `peripheral` with a cut-off note. |
 | `peripheral` | nothing passed | — | Includes the isolated seeds. Confidence expresses certainty that nothing is happening: 0.9 with ≤1 edge, 0.6 with several. |
+
+### Why `coordinator` needs all three conditions
+
+The guideline's starting gate was `n_key_payers >= 2 AND seed_reach >= 5`. On
+this data that promotes **264 accounts — 11.7% of the graph**, 103 of them
+`terminal`, i.e. accounts where the money demonstrably *stays*. The opposite of
+a controller.
+
+Two things were wrong, and both are visible in the profile:
+
+1. **`seed_reach >= 5` selects 71% of the graph.** Its range here is p50 = 7,
+   max = 15, because the largest component contains 46 seeds that feed almost
+   everything downstream. An absolute threshold on a metric whose range depends
+   entirely on the input carries no information. It is now a **percentile**
+   (p90), which rescales with whatever data the tool is pointed at.
+2. **Being *paid by* two collectors is not the same as being a collection
+   point.** A coordinator must itself pass the consolidator gate. That single
+   requirement drops the count from 264 to 10, and every one of them is a
+   consolidator — which is exactly the concept: *collects from other
+   collectors*.
+
+`require_consolidator_gate` can be turned off in `config.yaml`, and the
+pipeline now warns if `coordinator` ever exceeds 2% of the graph, since a 50%
+check would never have caught 11.7%.
 
 **Precedence:** `coordinator > consolidator > distributor > transit > terminal >
 cutoff > peripheral`. Gates that also passed are kept in `secondary_roles`.
@@ -225,6 +264,20 @@ they received, so their ratio is meaningless. They can be `distributor` (a
 courier fanning out), `consolidator`, or `peripheral`.
 
 ---
+
+### What the rules actually produce on the organizers' data
+
+| Role | Accounts | |
+|---|---:|---|
+| `terminal` | 1,129 | Broad by nature — most are leaves that simply had nothing above the 5,000 KZT floor leaving them. Carries a low priority weight for that reason. |
+| `peripheral` | 511 | No gate passed, including the 19 isolated seeds. |
+| `cutoff` | 444 | **Exactly** the announced count of hop-4 nodes whose onward flow was never traced. |
+| `transit` | 67 | |
+| `distributor` | 46 | |
+| `consolidator` | 41 | |
+| `coordinator` | 10 | The apex role, 0.4% of the graph. |
+
+Full run: **1.6 s**, against a 300 s budget.
 
 ## Priority score
 
@@ -284,20 +337,44 @@ viewer shows them in the **Run trace** tab:
   aggregated per agent;
 - cost per call, priced from `llm.pricing` in `config.yaml`.
 
-Three rules the tracer keeps:
+Rates are per model and per **context tier** — a call is billed at the
+long-context rate once its input passes `long_context_threshold_tokens`. The
+tier that was applied is recorded on every call.
+
+Four rules the tracer keeps:
 
 1. **It never invents a price.** A model with no `llm.pricing` entry is reported
-   as *unpriced*: exact token counts, no dollar figure. `config.yaml` ships with
-   `gpt-6-luna` pricing set to `null` — **fill in your provider's current rates
-   before quoting a spend number to anyone.**
+   as *unpriced*: exact token counts, no dollar figure, and the total carries an
+   explicit caveat rather than a number that looks authoritative.
 2. **It never guesses token counts.** Only usage the provider actually reported
-   is recorded.
-3. **It enforces the budget.** `llm.budget` caps calls, tokens and dollars per
+   is recorded. Cached tokens are charged **once**, at the cached rate — they
+   are a subset of the reported input count, so adding the full input rate on
+   top would double-bill them.
+3. **It never charges for a cache write it cannot see.** `cache_write` rates are
+   configured, but nothing is billed unless the provider reports
+   cache-creation tokens. The OpenAI usage payload reports cached tokens as
+   *reads*, so on this stack cache writes arrive as ordinary input.
+4. **It enforces the budget.** `llm.budget` caps calls, tokens and dollars per
    run. Hitting any ceiling shuts down the agent layer; the deterministic
    pipeline finishes and every export is still produced.
 
+### What a full run costs
+
+A complete agentic run — planner, calibrator, 10 investigations, critic,
+reviewer — is **14 calls and ~25,500 tokens**:
+
+| Model | Cost per run |
+|---|---:|
+| `gpt-6-luna` (configured) | **$0.0043** |
+| `gpt-6-sol` | $0.0869 |
+| `gpt-6-astra` | $0.4346 |
+
+Every call sits in the short-context tier: the largest prompt the crew sends is
+~5.4k tokens, three orders of magnitude below the tier boundary. The `max_usd`
+budget of $2.00 is therefore ~460 full runs on the configured model.
+
 Configured model: `gpt-6-luna`, `reasoning_effort: low`. Both are one-line
-changes in `config.yaml`.
+changes in `config.yaml`, and the other two models are already priced there.
 
 ---
 
@@ -418,7 +495,7 @@ What would change, in order of how soon it would bite:
 
 ```
 .
-├── go.sh                        # ONE command: setup -> run -> verify -> viewer
+├── agent_run.sh                 # ONE command: setup -> run -> verify -> viewer
 ├── run.py                       # pipeline entry point
 ├── config.yaml                  # thresholds, weights, agents, budget, pricing
 ├── config.calibrated.yaml       # thresholds the calibrator chose (generated, COMMITTED)

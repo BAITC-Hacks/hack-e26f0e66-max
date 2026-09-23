@@ -90,12 +90,22 @@ roles:
     # `terminal` is never assigned at MAX_DEPTH — that is the 444-false-sinks fix.
 
   coordinator:
-    # Second pass. Money from several collectors converging, with wide seed
-    # reach, is the signature of an upper-level node.
+    # Second pass: a collection point that collects from OTHER collection
+    # points, with money from many separate courier chains reaching it.
+    #
+    # A coordinator must itself pass the consolidator gate. Without that, the
+    # rule degenerates: on this data it promoted 264 nodes (11.7% of the graph),
+    # 103 of them `terminal` — accounts where money demonstrably stays, which is
+    # the opposite of a controller. Requiring convergence leaves 9.
+    require_consolidator_gate: true
     min_key_payers: 2            # payers whose own role is consolidator/distributor/transit
-    min_seed_reach: 5            # distinct seeds with a directed path to the node
+    # seed_reach is NEVER used as an absolute. Its range is entirely
+    # data-dependent: here p50=7 and max=15, so the guideline's ">= 5" selects
+    # 71% of the graph and carries no information. A percentile rescales with
+    # whatever input the tool is pointed at.
+    min_seed_reach_percentile: 0.90
     # Alternative route in: extreme seed reach plus money arriving from more
-    # than one cluster. The reach cut is a percentile, so it rescales with data.
+    # than one cluster.
     seed_reach_percentile: 0.99
     min_payer_clusters: 2
 
@@ -219,10 +229,31 @@ input:
 # ===========================================================================
 llm:
   enabled: true                # set false, or MONEYGRAPH_NO_LLM=1, for a pure offline run
+
+  # --- which model serves the crew ----------------------------------------
+  # Three supported setups, in order of how much you have to configure:
+  #
+  # 1. OpenAI            leave base_url null, put the key in .env
+  # 2. Any OpenAI-compatible server (vLLM, Ollama, llama.cpp, TGI, LM Studio,
+  #                      OpenRouter, Together, Groq, an internal gateway):
+  #                      set base_url + model, key can be a placeholder
+  # 3. No model at all   MONEYGRAPH_NO_LLM=1 — everything still runs
+  #
+  # Env vars override this file, so a self-hosted model needs no code edit:
+  #   MONEYGRAPH_BASE_URL   MONEYGRAPH_MODEL   MONEYGRAPH_API_KEY
   provider: openai
-  api_key_env: [OPENAI_KEY, OPENAI_API_KEY]   # .env is loaded first; first match wins
+  base_url: null               # e.g. http://localhost:8000/v1 for vLLM
+  api_key_env: [OPENAI_KEY, OPENAI_API_KEY, MONEYGRAPH_API_KEY]
   model: gpt-6-luna
+
+  # Wire format. `auto` uses the Responses API for single-turn calls (it reports
+  # reasoning tokens) and Chat Completions for tool loops. Set `chat` for any
+  # self-hosted server — /v1/responses is rare outside OpenAI. A custom
+  # base_url switches to `chat` on its own.
+  api: auto                    # auto | chat | responses
+
   reasoning_effort: low        # low | medium | high — low is the cheap test setting
+                               # omit/null for models that reject the parameter
   temperature: 0.2
   max_output_tokens: 2000
   timeout_s: 60
@@ -238,15 +269,34 @@ llm:
     max_total_tokens: 500000
 
   # ---- Pricing for the spend tracer -------------------------------------
-  # USD per 1,000,000 tokens. VERIFY THESE against your provider's current
-  # price list before quoting a number to anyone: they are not knowable from
-  # inside this repo. Any model left null reports token counts with the cost
-  # shown as "unpriced" — the tracer never invents a dollar figure.
+  # USD per 1,000,000 tokens. Each model has two tiers: requests inside the
+  # short-context window and requests beyond it.
+  #
+  # `cache_write` is recorded for completeness but is only charged when the
+  # provider actually reports cache-creation tokens in its usage object. The
+  # OpenAI usage payload reports cached tokens as *reads* (`cached_tokens`), so
+  # on this stack cache writes come through as ordinary input and the tracer
+  # does not invent a separate charge for them.
   pricing:
+    # Which tier a call is billed at. A call whose input exceeds this is priced
+    # at the long-context rates.
+    #
+    # ASSUMPTION — confirm against your provider's published boundary. It has no
+    # practical effect on this workload: the largest prompt the crew sends is
+    # ~5k tokens, three orders of magnitude below any plausible cutoff, so every
+    # call here prices at the short tier. It matters only if this is pointed at
+    # a far larger graph.
+    long_context_threshold_tokens: 200000
+
     gpt-6-luna:
-      input: null
-      cached_input: null
-      output: null
+      short: {input: 0.10, cached_input: 0.01, cache_write: 0.125, output: 0.50}
+      long:  {input: 0.20, cached_input: 0.02, cache_write: 0.25,  output: 0.75}
+    gpt-6-sol:
+      short: {input: 2.00, cached_input: 0.20, cache_write: 2.50,  output: 10.00}
+      long:  {input: 4.00, cached_input: 0.40, cache_write: 5.00,  output: 15.00}
+    gpt-6-astra:
+      short: {input: 10.00, cached_input: 1.00, cache_write: 12.50, output: 50.00}
+      long:  {input: 20.00, cached_input: 2.00, cache_write: 25.00, output: 75.00}
 
 agents:
   # Each agent can be switched off independently. Off means its deterministic
@@ -264,6 +314,7 @@ agents:
 
   calibrator:
     enabled: true              # derives role thresholds from the distributions
+    max_output_tokens: 4000    # ten thresholds, each with a written rationale
     # Its output is persisted to config.calibrated.yaml and reused, so a
     # submitted run reproduces exactly. `python run.py --recalibrate` redoes it.
     # Every proposal is simulated against the real data before acceptance: a
@@ -273,9 +324,14 @@ agents:
   investigator:
     enabled: true              # multi-step case dossier per priority account
     max_steps: 6               # tool calls per account before it must conclude
+    max_output_tokens: 2000
 
   critic:
     enabled: true              # argues against the shortlist; writes review_notes.md
+    # It writes the longest structured reply in the crew. At the global 2000
+    # default its JSON was cut off mid-object on a real run and the whole call
+    # was wasted, so it gets its own ceiling.
+    max_output_tokens: 6000
 
   ingest:
     enabled: true              # resolve ambiguous input columns

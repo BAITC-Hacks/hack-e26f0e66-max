@@ -152,7 +152,10 @@ def why_for(row, cfg: dict, contributors: list[str]) -> str:
     elif not row.outflow_observed:
         phrases.append("onward flow not traced — candidate for a follow-up request")
 
-    text = "; ".join(phrases[:4]).capitalize() + "."
+    # Upper-case the first letter only: `str.capitalize()` would lower-case the
+    # rest and turn "8.4M KZT" into "8.4m kzt".
+    joined = "; ".join(phrases[:4])
+    text = (joined[:1].upper() + joined[1:] + ".") if joined else "No signals detected."
     adj = getattr(row, "priority_adjustments", "")
     if adj and len(text) < limit - len(adj) - 3:
         text += f" [{adj}]"

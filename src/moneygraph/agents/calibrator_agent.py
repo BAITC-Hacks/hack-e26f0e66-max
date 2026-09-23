@@ -55,8 +55,9 @@ TUNABLE = {
     "transit.ratio_high": {"kind": "num", "lo": 1.05, "hi": 1.6},
     "terminal.max_pass": {"kind": "num", "lo": 0.01, "hi": 0.3},
     "coordinator.min_key_payers": {"kind": "int", "lo": 1, "hi": 6},
-    "coordinator.min_seed_reach": {"kind": "int", "metric": "seed_reach",
-                                   "lo_pct": 0.80, "hi_pct": 0.99},
+    # A percentile, not a count: seed_reach spans a different range on every
+    # input, so an absolute threshold here means nothing.
+    "coordinator.min_seed_reach_percentile": {"kind": "num", "lo": 0.75, "hi": 0.99},
 }
 
 SYSTEM = f"""You are a financial-crime data analyst calibrating the thresholds of a rule engine that assigns roles in a money-transfer network.
@@ -98,15 +99,23 @@ class CalibratorAgent(Agent):
                            "is the band around 1.0",
                 "terminal": "money arrives and stays; max_pass is the largest share "
                             "that may leave. Never applied at max traversal depth.",
-                "coordinator": "money from several collector accounts and many "
-                               "separate seed chains converges here",
+                "coordinator": "a collection point that collects from OTHER "
+                               "collection points: it must itself pass the "
+                               "consolidator gate, at least min_key_payers of its "
+                               "payers must be collectors/distributors/transit, "
+                               "and its seed_reach must be in the top decile. "
+                               "min_seed_reach_percentile is a PERCENTILE (0-1), "
+                               "because seed_reach's absolute range is entirely "
+                               "data-dependent.",
             },
             "current_thresholds": context["current"],
             "legal_ranges": context["ranges"],
             "counts_at_current_thresholds": context["current_counts"],
             "note": "Nodes at max traversal depth had their onward flow truncated, "
                     "so most leaves trivially satisfy a low terminal threshold. "
-                    "Account for that.",
+                    "Account for that. `pass_ratio.counts_in_band` gives the node "
+                    "count each candidate transit band and terminal cut would "
+                    "select, so those ARE percentile-justifiable from this input.",
         }, ensure_ascii=False, indent=2, default=str)
 
     def validate(self, output: Any, context: dict) -> tuple[bool, str]:
@@ -194,17 +203,66 @@ def simulate_counts(f: pd.DataFrame, rc: dict, max_depth: int) -> dict[str, int]
     return {k: int(v) for k, v in counts.items()}
 
 
-def build_context(features: pd.DataFrame, cfg: dict, max_depth: int) -> dict:
-    """Distributions, current thresholds and the legal range for each."""
+def build_context(features: pd.DataFrame, cfg: dict, max_depth: int,
+                  edges: pd.DataFrame | None = None) -> dict:
+    """Distributions, current thresholds and the legal range for each.
+
+    The first version of this shipped only in_deg / out_deg / amounts, and the
+    agent said so in its own `expected_concerns`: it could not percentile-justify
+    `fan_ratio`, the transit band or `terminal.max_pass`, because no distribution
+    for those was supplied. So they are derived here — a threshold the agent
+    cannot see the distribution for is a threshold it can only guess at.
+    """
     pcts = [0.5, 0.75, 0.9, 0.95, 0.99]
+    low_pcts = [0.01, 0.05, 0.1, 0.25]
+    f = features
+    derived = pd.DataFrame({
+        # What `distributor.fan_ratio` is actually compared against.
+        "fan_ratio": f["out_deg"] / f["in_deg"].clip(lower=1),
+    })
     metrics = ["in_deg", "out_deg", "in_sum", "out_sum", "pass_ratio", "seed_reach"]
     distributions = {}
-    for m in metrics:
-        s = pd.to_numeric(features[m], errors="coerce")
+    for m in metrics + ["fan_ratio"]:
+        s = pd.to_numeric(f[m] if m in f else derived[m], errors="coerce")
         distributions[m] = {
             "n_nonzero": int((s.fillna(0) > 0).sum()),
             "min": _num(s.min()), "max": _num(s.max()),
             **{f"p{int(p * 100)}": _num(s.quantile(p)) for p in pcts},
+        }
+
+    # `terminal.max_pass` and the transit band are cuts on pass_ratio, so the
+    # low tail and the neighbourhood of 1.0 are what matter for them.
+    pr = pd.to_numeric(f["pass_ratio"], errors="coerce").dropna()
+    distributions["pass_ratio"]["low_tail"] = {
+        f"p{int(p * 100)}": _num(pr.quantile(p)) for p in low_pcts}
+    distributions["pass_ratio"]["n_defined"] = int(len(pr))
+    distributions["pass_ratio"]["counts_in_band"] = {
+        "<=0.05": int((pr <= 0.05).sum()), "<=0.10": int((pr <= 0.10).sum()),
+        "<=0.20": int((pr <= 0.20).sum()),
+        "0.8-1.2": int(pr.between(0.8, 1.2).sum()),
+        "0.9-1.1": int(pr.between(0.9, 1.1).sum()),
+        "0.7-1.3": int(pr.between(0.7, 1.3).sum()),
+    }
+
+    # How many of each node's payers would themselves pass a key-role gate.
+    # An approximation under the CURRENT thresholds — the real value needs the
+    # finished roles — but it is what `coordinator.min_key_payers` is compared
+    # against, and a rough distribution beats none.
+    if edges is not None and not edges.empty:
+        rc = cfg["roles"]
+        key = set(f.loc[
+            (f["in_deg"] >= rc["consolidator"]["min_payers"])
+            | (f["out_deg"] >= rc["distributor"]["min_recipients"])
+            | (pd.to_numeric(f["pass_ratio"], errors="coerce")
+               .between(rc["transit"]["ratio_low"], rc["transit"]["ratio_high"])),
+            "gid"])
+        nkp = (edges[edges["src"].isin(key)].groupby("dst")["src"].nunique()
+               .reindex(f["gid"]).fillna(0))
+        distributions["n_key_payers_approx"] = {
+            "note": "payers that pass a key-role gate under the CURRENT thresholds",
+            "min": 0, "max": _num(nkp.max()),
+            **{f"p{int(p * 100)}": _num(nkp.quantile(p)) for p in pcts},
+            "counts": {f">={k}": int((nkp >= k).sum()) for k in (1, 2, 3, 4, 5)},
         }
 
     current = {k: dict(v) for k, v in cfg["roles"].items() if isinstance(v, dict)}

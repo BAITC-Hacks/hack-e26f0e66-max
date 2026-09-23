@@ -1,0 +1,188 @@
+{
+  "100000004015047100": {
+    "summary": "Account 100000004015047100 is a non-seed coordinator with 9 incoming payers totaling 919,104 KZT and one outgoing recipient, 100000001616816100, receiving 69,195 KZT. Its card reports reach from 11 seeds; the pattern is consistent with a multi-payer collection point, but the observed outflow is limited to one recipient.",
+    "pattern": "multi-payer collection point",
+    "supporting_gids": [
+      100000004015047100,
+      100000001616816100,
+      100000007982728100,
+      100000007747786100,
+      100000001616816100
+    ],
+    "alternative_explanation": "A legitimate shared collection account, such as one receiving pooled payments before onward settlement, could produce this structure; the network data alone does not establish purpose.",
+    "next_step": "Request and review the transaction details and documented purpose for the 69,195 KZT sent to 100000001616816100, and reconcile it against the incoming funds.",
+    "confidence": "medium"
+  },
+  "100000003115284100": {
+    "summary": "Account 100000003115284100 shows signs of a multi-payer collection point: 8 accounts paid it 2,160,500 KZT, including 7 classified as consolidators or coordinators, and its seed reach is 11. It sent 517,000 KZT to two accounts; both are reachable downstream (100000003360542100 and 100000003390036100), within cluster 5.",
+    "pattern": "multi-payer collection point",
+    "supporting_gids": [
+      100000003115284100,
+      100000000343175100,
+      100000000331309100,
+      100000000437046100,
+      100000003684369100,
+      100000008730846100,
+      100000008165763100,
+      100000001857829100,
+      100000001857829100,
+      100000003360542100,
+      100000003390036100
+    ],
+    "alternative_explanation": "A legitimate collection or settlement account could receive pooled payments and pass some funds to downstream accounts; the transfer structure and amounts alone cannot distinguish that from other explanations.",
+    "next_step": "Review transaction timing and purpose, and request supporting documentation for the incoming funds and the two outgoing transfers to 100000003360542100 and 100000003390036100.",
+    "confidence": "high"
+  },
+  "100000008165763100": {
+    "summary": "Account 100000008165763100 shows a collection-and-distribution pattern: 15 payers send 1,165,815 KZT, and it sends 1,267,858 KZT to 17 recipients. The tool evidence reports money from 9 seeds reaching it via collector/transit accounts; its many onward payments make it a candidate upper-level node for review.",
+    "pattern": "multi-payer collection and distribution point",
+    "supporting_gids": [
+      100000008165763100,
+      100000004358004100,
+      100000003880331100,
+      100000003115284100,
+      100000006564102100
+    ],
+    "alternative_explanation": "A legitimate merchant or service collecting payments and paying multiple suppliers or recipients could produce this structure; the transfer data alone cannot distinguish that from coordinated pass-through activity.",
+    "next_step": "Request and review transaction-purpose records and supporting invoices or contracts for the incoming and outgoing transfers, prioritizing the flows from seed payer 100000004358004100 and to coordinator 100000003115284100.",
+    "confidence": "high"
+  },
+  "100000002718366100": {
+    "summary": "Account 100000002718366100 is a non-seed terminal in cluster 1: it receives 2.525M KZT from six accounts and has no observed outgoing edges. Five payers are classified as distributors or consolidator; its card reports reach from nine seeds through upstream accounts, making it a candidate upper-level collection point for review.",
+    "pattern": "multi-payer terminal collection point",
+    "supporting_gids": [
+      100000002718366100,
+      100000008547948100,
+      100000008710791100,
+      100000001162560100,
+      100000008517538100,
+      100000008466579100,
+      100000005498992100
+    ],
+    "alternative_explanation": "A legitimate salary, pooled-payment, or merchant-settlement account could also receive transfers from multiple accounts and retain funds; structure and amounts alone cannot distinguish these explanations.",
+    "next_step": "Request the account’s stated purpose and supporting records for the incoming transfers, then reconcile them against the upstream flows from payers such as 100000008547948100 and 100000008710791100.",
+    "confidence": "medium"
+  },
+  "100000001253557100": {
+    "summary": "Account 100000001253557100 is a candidate collection/convergence point: five accounts paid it KZT 210,200, including four non-seed accounts classified as distributors or peripheral (100000008466579100, 100000003589877100, 100000005704413100, 100000005933757100). It has no observed outgoing transfers; the card attributes seed reach of 10. (100000001253557100)",
+    "pattern": "multi-payer collection point",
+    "supporting_gids": [
+      100000001253557100,
+      100000008466579100,
+      100000003589877100,
+      100000008680731100,
+      100000005704413100,
+      100000005933757100
+    ],
+    "alternative_explanation": "A legitimate collection account could receive transfers from multiple contributors and retain funds; salary or merchant settlement activity can also resemble this structure. The available transfer structure alone does not distinguish these explanations. (100000001253557100)",
+    "next_step": "Request the account’s purpose and supporting records for the five incoming transfers, then verify the source and intended use of the funds. (100000001253557100)",
+    "confidence": "medium"
+  },
+  "100000002838861100": {
+    "summary": "Account 100000002838861100 shows a collection-point pattern: five payers sent 554,523.95 KZT, including two seed accounts, while it sent 10,000 KZT onward to 100000002812641100. Cluster 9 is described as a collection hub; this account is a candidate for review, not proof of wrongdoing.",
+    "pattern": "multi-payer collection point with limited observed onward flow",
+    "supporting_gids": [
+      100000002838861100,
+      100000005498992100,
+      100000007747786100,
+      100000005578559100,
+      100000005704413100,
+      100000002812641100
+    ],
+    "alternative_explanation": "A legitimate shared collection account, salary account, or merchant settlement account could receive from several payers and retain most funds; the structure and amounts alone do not distinguish these explanations.",
+    "next_step": "Request transaction-purpose and account-ownership documentation for 100000002838861100, then reconcile the five incoming transfers against a legitimate collection or settlement purpose.",
+    "confidence": "high"
+  },
+  "100000007594394100": {
+    "summary": "Account 100000007594394100 shows signs of a collection point: six accounts sent it 395,385 KZT, and it sent 3,376,312 KZT in 40 transfers to 100000006274203100. Its card attributes seed reach of 9; the cluster summary identifies it as the highest-ranked candidate upper-level node in cluster 20.",
+    "pattern": "multi-payer collection point with concentrated onward transfers",
+    "supporting_gids": [
+      100000007594394100,
+      100000004400305100,
+      100000005782781100,
+      100000003854444100,
+      100000000437046100,
+      100000008165763100,
+      100000006274203100
+    ],
+    "alternative_explanation": "A legitimate pooled account or business settlement account could receive funds from multiple accounts and make repeated transfers to one recipient; the structure and amounts alone do not distinguish that from a concerning collection pattern.",
+    "next_step": "Review the transaction ledger and obtain a documented explanation and supporting records for the 40 transfers totaling 3,376,312 KZT to 100000006274203100.",
+    "confidence": "medium"
+  },
+  "100000004156082100": {
+    "summary": "100000004156082100 is a non-seed consolidator candidate in cluster 2: it receives 377,366 KZT from five payers, including seed 100000008418835100, then sends 2,319,556 KZT to 26 recipients. Cluster evidence describes a collection-hub pattern involving seven seeds; this account merits review for high-volume fan-out, not a conclusion about purpose.",
+    "pattern": "multi-payer collection point with broad fan-out",
+    "supporting_gids": [
+      100000004156082100,
+      100000008418835100,
+      100000004527381100,
+      100000003221384100,
+      100000000795129100,
+      100000006518161100
+    ],
+    "alternative_explanation": "A legitimate account used for business collections, payroll or supplier payments could receive from several parties and make many outgoing transfers; the graph and amounts alone cannot distinguish that from a collection point.",
+    "next_step": "Obtain transaction-level timestamps, payment references and account-purpose documentation, then reconcile the incoming funds to the 26 outgoing recipients, prioritizing the largest transfers such as 511,200 KZT to 100000003221384100.",
+    "confidence": "medium"
+  },
+  "100000001303311100": {
+    "summary": "Account 100000001303311100 is a non-seed coordinator in cluster 1, with five incoming transfers totaling 1,324,000 KZT and no observed outgoing transfers. Its recorded seed reach of 9 and role support make it a candidate upper-level collection point for review; the observed inflows end here in the available network view.",
+    "pattern": "multi-payer terminal collection point",
+    "supporting_gids": [
+      100000001303311100,
+      100000008758168100,
+      100000008759857100,
+      100000008710791100,
+      100000008743913100,
+      100000008742053100
+    ],
+    "alternative_explanation": "A legitimate salary, settlement, or other collection account could also receive transfers from multiple accounts and retain the funds; the structure and amounts alone do not distinguish this.",
+    "next_step": "Request account statements and transaction purpose documentation for the five incoming transfers, then reconcile the counterparties and any activity outside this network view.",
+    "confidence": "medium"
+  },
+  "100000002398779100": {
+    "summary": "Account 100000002398779100 shows signs of a collection/consolidation point: it receives 1,095,690 KZT from 13 payers and sends 66,000 KZT to one recipient, 100000008576243100. It is non-seed, at depth 2, and the cluster summary identifies it as a consolidator in a collection-hub hypothesis; these are candidate-for-review signals, not proof of purpose.",
+    "pattern": "multi-payer collection point",
+    "supporting_gids": [
+      100000002398779100,
+      100000004486525100,
+      100000005634552100,
+      100000004077081100,
+      100000004351795100,
+      100000008576243100
+    ],
+    "alternative_explanation": "A legitimate account collecting payments or settling with suppliers could also receive from many accounts and retain most funds; the transfer structure and amounts alone do not establish the reason.",
+    "next_step": "Request transaction purpose and supporting records for the incoming transfers to 100000002398779100 and its 66,000 KZT payment to 100000008576243100, then reconcile them against the stated activity.",
+    "confidence": "high"
+  },
+  "100000001282143100": {
+    "summary": "Account 100000001282143100 is a terminal-style collection point: five distributor accounts (100000005242320100, 100000008742053100, 100000008710791100, 100000008710843100, 100000008512827100) paid it 1.7 million KZT, and no outgoing transfers are observed. Its card reports reach from 10 seeds; this is a candidate upper-level node for review, not proof of coordination.",
+    "pattern": "multi-payer terminal collection point",
+    "supporting_gids": [
+      100000001282143100,
+      100000005242320100,
+      100000008742053100,
+      100000008710791100,
+      100000008710843100,
+      100000008512827100
+    ],
+    "alternative_explanation": "A legitimate account receiving pooled payments or merchant proceeds could show the same multi-payer, no-observed-outflow structure; the available transfer structure does not establish purpose.",
+    "next_step": "Request the account’s transaction-purpose and source-of-funds documentation, then reconcile it against the five incoming payer flows.",
+    "confidence": "medium"
+  },
+  "100000008144528100": {
+    "summary": "Account 100000008144528100 is a non-seed terminal in cluster 2, receiving 1,068,202.6 KZT from five payers and showing no outgoing transfers. This is a pattern consistent with a multi-payer collection point and explains its review priority; cluster 2 is described as a collection-hub hypothesis, but its stated hub is a different account (100000004156082100).",
+    "pattern": "multi-payer terminal collection point",
+    "supporting_gids": [
+      100000008144528100,
+      100000006579678100,
+      100000005339662100,
+      100000005287097100,
+      100000005619339100,
+      100000001049200100,
+      100000004156082100
+    ],
+    "alternative_explanation": "A salary or other legitimate account receiving several payments and retaining funds could show the same structure; the transfer data alone does not establish the purpose of the inflows.",
+    "next_step": "Request supporting context for the five incoming payments to 100000008144528100, especially the repeated 1,024,400 KZT from 100000006579678100, and verify the account holder’s documented source and purpose of funds.",
+    "confidence": "medium"
+  }
+}

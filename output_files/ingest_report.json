@@ -1,0 +1,63 @@
+{
+  "input_dir": "data",
+  "files": [
+    {
+      "file": "edges.parquet",
+      "kind": "edges",
+      "rows": 3119,
+      "mapping": {
+        "src": "src",
+        "dst": "dst",
+        "amount": "sum_kzt",
+        "n_tx": "n_tx",
+        "depth": "depth"
+      },
+      "resolved_by": {
+        "src": "alias",
+        "dst": "alias",
+        "amount": "alias",
+        "n_tx": "alias",
+        "depth": "alias"
+      }
+    },
+    {
+      "file": "nodes.parquet",
+      "kind": "nodes",
+      "rows": 2248,
+      "mapping": {
+        "gid": "gid",
+        "depth": "depth",
+        "is_seed": "is_seed"
+      },
+      "resolved_by": {
+        "gid": "alias",
+        "depth": "alias",
+        "is_seed": "alias"
+      }
+    },
+    {
+      "file": "transactions.parquet",
+      "kind": "transactions",
+      "rows": 4840,
+      "mapping": {
+        "src": "src",
+        "dst": "dst",
+        "date": "date",
+        "amount": "sum_kzt"
+      },
+      "resolved_by": {
+        "src": "alias",
+        "dst": "alias",
+        "date": "alias",
+        "amount": "alias"
+      }
+    }
+  ],
+  "used": {
+    "edges": "edges.parquet",
+    "transactions": "transactions.parquet",
+    "nodes": "nodes.parquet"
+  },
+  "derived": [],
+  "notes": []
+}

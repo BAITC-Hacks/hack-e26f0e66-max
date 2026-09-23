@@ -27,3 +27,6 @@ flagged/
 
 # Run logs from go.sh
 .run_logs/
+
+# Network maps rendered by the viewer (regenerated on demand)
+output_files/_maps/

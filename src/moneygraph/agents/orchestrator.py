@@ -133,7 +133,7 @@ class Crew:
     # ---------------------------------------------------------- calibration
 
     def calibrate(self, features, max_depth: int, config_dir: Path,
-                  recalibrate: bool) -> dict | None:
+                  recalibrate: bool, edges=None) -> dict | None:
         """Returns the calibration to apply, or None to keep config.yaml."""
         from . import calibrator_agent as ca
 
@@ -147,7 +147,7 @@ class Crew:
                       f"— pass --recalibrate to redo")
                 return saved
 
-        context = ca.build_context(features, self.cfg, max_depth)
+        context = ca.build_context(features, self.cfg, max_depth, edges=edges)
         agent = ca.CalibratorAgent(self.client, self.cfg, self.tracer)
         result = self.run_record.add(agent.run(context, "calibrate thresholds"))
         calibration = result.output
