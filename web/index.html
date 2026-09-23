@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Money Graph</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕸️</text></svg>">
+<link rel="stylesheet" href="vendor/vis-network.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <div class="boot-inner">
+    <div class="spinner"></div>
+    <p id="boot-msg">Loading results…</p>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◆</span>
+    <div>
+      <div class="brand-title">Money Graph</div>
+      <div class="brand-sub" data-i18n-track>Track 2 — Finances · HackAlem AI</div>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="langs" id="langs"></div>
+    <button class="icon-btn" id="theme-btn" title="Light / dark">◐</button>
+  </div>
+</header>
+
+<div id="mt-banner" class="mt-banner" hidden></div>
+
+<nav class="tabs" id="tabs"></nav>
+
+<main id="main"></main>
+
+<footer class="foot">
+  <span id="foot-meta"></span>
+  <span class="foot-sep">·</span>
+  <span id="foot-note"></span>
+</footer>
+
+<script src="vendor/vis-network.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

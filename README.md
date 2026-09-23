@@ -1,7 +1,7 @@
 # Money Graph
 
 Reconstructing the financial structure of an organized group from a transaction
-network. HackAlem AI case.
+network. **Track 2 — Finances.** HackAlem AI case.
 
 > Languages: **English** · [Русский](README.ru.md) · [Қазақша](README.kk.md)
 
@@ -10,9 +10,61 @@ network. HackAlem AI case.
 ```
 
 One command: install dependencies → compute → verify the exports → report time
-and cost → open the web interface with a public link.
+and cost → **open the interface in your browser**.
 
 ---
+
+## Quick start — pick one
+
+### A · Run everything from scratch, with the AI agents
+
+Put a key in `.env`, then run exactly these two commands:
+
+```bash
+cp .env.example .env && echo "OPENAI_KEY=sk-REPLACE-ME" >> .env
+./agent_run.sh
+```
+
+That installs everything, runs the full agent crew, verifies the three required
+CSVs, prints time and spend, and opens the interface. About 90 seconds and
+~$0.21 on the configured model.
+
+### B · Just look at the results produced during the hackathon
+
+No key, no model calls, nothing to configure — the committed results are opened
+as they are:
+
+```bash
+./agent_run.sh --use-existing
+```
+
+### C · Recompute everything with no AI at all
+
+Same three CSVs, same roles, same ranks — only the prose is templated instead
+of narrated:
+
+```bash
+./agent_run.sh --offline
+```
+
+### Which interface?
+
+**The standalone frontend is the default.** It is a static page served locally,
+opens in your browser automatically, and needs no internet.
+
+```bash
+./agent_run.sh                   # standalone frontend (default)
+./agent_run.sh --ui gradio       # Gradio, which can publish a public share link
+./agent_run.sh --ui none         # no interface, just the exports
+./agent_run.sh --no-browser      # do not open a browser
+```
+
+Both interfaces read the same exported files, so they always show the same
+numbers. Both open in **English** by default, with Русский and Қазақша one
+click away.
+
+> **Demo walkthrough:** [`docs/demo_script.md`](docs/demo_script.md) — a timed
+> five-minute script with the actual account numbers.
 
 ## Contents
 
@@ -148,9 +200,10 @@ the finding — so the log is a deliverable, not a debug artifact.
 | Data | `pandas`, `pyarrow`, `numpy` | parquet/CSV reading, vectorized computation |
 | Graphs | `networkx` 3.7, `scipy` | directed weighted graph, PageRank, betweenness, Louvain, connected components |
 | Configuration | `PyYAML` | every threshold and weight lives outside the code |
-| Interface | `gradio` 5.50, `pyvis` 0.3.2 | web interface and interactive network maps that work offline |
+| Interface | **standalone frontend** (HTML/CSS/vanilla JS, vis-network vendored) | the default: no build step, no framework, no network |
+| Interface (alt) | `gradio` 5.50, `pyvis` 0.3.2 | second interface, can publish a public share link |
 | Agents | `openai` (compatible client), `python-dotenv` | the AI layer; **optional at runtime** |
-| Tests | `pytest` | 73 tests: export contract, wording, agents, interface |
+| Tests | `pytest` | 83 tests: export contract, wording, agents, interface |
 
 **No charting library, deliberately.** The one chart in the interface is drawn
 in CSS: otherwise its rendering depends on a JS bundle version agreeing with
@@ -189,7 +242,7 @@ cp .env.example .env               # the key may stay empty
 ### Verifying the installation
 
 ```bash
-.venv/bin/python -m pytest -q      # expected: 73 passed
+.venv/bin/python -m pytest -q      # expected: 83 passed
 ```
 
 Machine requirements: an ordinary laptop. The computation takes **under 2
@@ -213,6 +266,8 @@ verification → web interface with a public link.
 
 ```bash
 ./agent_run.sh                 # full run with the AI layer (needs .env)
+./agent_run.sh --ui gradio     # use Gradio instead of the standalone frontend
+./agent_run.sh --no-browser    # do not open a browser
 ./agent_run.sh --offline       # no model calls at all; exports are identical
 ./agent_run.sh --use-existing  # skip the computation, open the viewer on the last result
 ./agent_run.sh --data ./my_export   # your own files instead of data/
@@ -249,6 +304,8 @@ make run | make offline | make existing | make test
 | `data_requests.md` | what is missing and what to request next |
 | `dossiers.json` | the investigator's dossiers on the priority accounts |
 | `ingest_report.json` | which file was read as what, and how each column was matched |
+| `extras_report.md` / `extras.json` | optional analyses: return flows, recurring routes, resilience, anomaly flags |
+| `web_data.json` | everything the standalone frontend reads, in all three languages |
 | `run_trace.md` / `.json` | per-stage timing, tokens, spend |
 
 ---
@@ -572,6 +629,26 @@ data: mean 0.95, **78 clusters at ≥ 0.80**.
 
 ---
 
+## 11a. Optional analyses (brief §8)
+
+All four are implemented, deterministic, and run in about 0.1 s. **None of them
+changes a role, a score or a rank** — they are flags and context shown beside an
+account, exactly as the brief requires.
+
+| Analysis | What it produces |
+|---|---|
+| **Cut-off artifact** | handled in the core: the `cutoff` role, no `terminal` at MAX_DEPTH, a priority boost for frontier collectors |
+| **Temporal patterns** | `median_lag_days`, `fast_pass_share` (by amount, not by count), `max_payers_same_day` for synchronized collection |
+| **Return flows and recurring routes** | directed cycles within a length bound, and repeated A→B→C chains where B forwarded within three days. Enumeration is capped, and the report says *"at least N"* rather than stating a total it did not compute |
+| **Network resilience** | remove the top-5/10/20 by priority and measure the largest component, the component count and how far seed money still reaches — **against a random-removal baseline**, because "the network fragments" means nothing without it |
+| **Anomaly flags** | amounts just above the reporting floor (what structuring looks like from the side that is visible), round-number amounts, and accounts extreme *for their own hop* — the only fair comparison when depth drives the distribution |
+
+Current run: 57 flagged accounts, ≥200 cycles, ≥50 recurring routes, and
+removing the top 20 shrinks the largest component by 3.4% against 1.7% at
+random — twice the damage of an arbitrary removal.
+
+---
+
 ## 12. Data limitations and how each is handled
 
 | Announced limitation | Handling |
@@ -733,6 +810,8 @@ In the order things would bite:
 │   ├── priority.py              # weighted percentile sum
 │   ├── evidence.py              # templates and the wording validator
 │   ├── i18n.py                  # three interface languages and evidence
+│   ├── extras.py                # optional analyses (brief §8)
+│   ├── webexport.py             # builds web_data.json for the frontend
 │   ├── export.py                # the deliverables
 │   ├── trace.py                 # time, tokens, spend
 │   ├── pipeline.py              # orchestration only
@@ -748,10 +827,16 @@ In the order things would bite:
 │       ├── narrator_agent.py    # RuleTrace → text, validated
 │       ├── analyst_agent.py     # natural-language questions
 │       └── review_agent.py      # data-request brief
+├── web/                         # standalone frontend — the DEFAULT interface
+│   ├── index.html               # one page, no build step
+│   ├── styles.css               # light and dark, no framework
+│   ├── app.js                   # rendering, graph, language switching
+│   └── serve.py                 # local server, opens the browser
 ├── app/app.py                   # Gradio interface (en / ru / kk)
 ├── docs/
 │   ├── diagram.md               # solution diagram (Mermaid)
+│   ├── demo_script.md           # the 5-minute demo, timed, with real gids
 │   └── case_brief.docx          # the organizers' case description
 ├── output_files/                # computation results
-└── tests/test_outputs.py        # 73 tests
+└── tests/test_outputs.py        # 83 tests
 ```

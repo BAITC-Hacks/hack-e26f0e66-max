@@ -29,8 +29,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import (attribution, clustering, evidence, export, features, graph,
-               priority, roles, temporal)
+from . import (attribution, clustering, evidence, export, extras, features,
+               graph, priority, roles, temporal)
 from .agents.llm import LLMClient
 from .agents.orchestrator import Crew, build_brief
 from .io import Dataset, load_config, load_dataset
@@ -159,6 +159,20 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
     with tracer.stage("priority"):
         df = priority.priority_score(df, cfg, ds.max_depth)
 
+    # Optional analyses (brief §8). Flags and context only — nothing here
+    # changes a role, a score or a rank.
+    with tracer.stage("extras"):
+        df, extras_report = extras.run_extras(g, ds, df, cfg)
+        if extras_report:
+            export.write_text("extras_report.md",
+                              extras.render_report(extras_report), out_dir)
+            import json as _j
+
+            export.write_text("extras.json",
+                              _j.dumps(extras_report, indent=2, ensure_ascii=False,
+                                       default=str), out_dir)
+            _print_extras(extras_report)
+
     # ------------------------------------------------------------- evidence
     traces = {int(t.gid): t for t in df["trace_obj"]}
     with tracer.stage("evidence:templates"):
@@ -238,6 +252,14 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
         export.write_text("ingest_report.json",
                           _json.dumps(ds.provenance, indent=2, ensure_ascii=False,
                                       default=str), out_dir)
+        # Everything the standalone web interface needs, in one file. Built
+        # here so the frontend never has to re-read data/ or recompute.
+        from . import webexport
+
+        cfg_for_web = {**cfg, "_config_dir": str(config_dir)}
+        web_path = webexport.build(out_dir, cfg_for_web)
+        paths.append(web_path)
+
         for p in paths:
             print(f"     wrote {p.name}")
 
@@ -411,6 +433,28 @@ def _warn_degenerate(counts: dict[str, int], n: int, tracer: RunTracer) -> None:
             f"`coordinator` claims {n_coord} of {n} nodes "
             f"({100 * n_coord / n:.1f}%) — the apex role should be a handful of "
             f"accounts; check that its convergence requirement is enabled")
+
+
+def _print_extras(report: dict) -> None:
+    a = report.get("anomalies")
+    if a:
+        print(f"     flags: {a['any_flag']} account(s) — "
+              f"{a['near_threshold']} near-threshold, {a['round_amounts']} round, "
+              f"{a['extreme_for_hop']} extreme for their hop")
+    c = report.get("cycles")
+    if c:
+        print(f"     return flows: {'>=' if c.get('capped') else ''}"
+              f"{c['n_cycles']} cycle(s)")
+    r = report.get("recurring_routes")
+    if r:
+        print(f"     recurring routes: {'>=' if r.get('capped') else ''}"
+              f"{r['n_routes']}")
+    res = report.get("resilience")
+    if res and res.get("removals"):
+        row = res["removals"][-1]
+        print(f"     resilience: removing top {row['n_removed']} shrinks the "
+              f"largest component {row['largest_component_drop_pct']}% vs "
+              f"{row['random_drop_pct']}% at random")
 
 
 def _fmt_counts(counts: dict[str, int]) -> str:

@@ -176,10 +176,22 @@ evidence:
 # ---------------------------------------------------------------------------
 # Optional features (guideline §14). Off by default so the must-haves stay fast.
 # ---------------------------------------------------------------------------
+# All deterministic and cheap (well under a second each on this volume), so
+# they are on. Turn one off if it ever stops being cheap.
 extras:
-  cycles: {enabled: false, length_bound: 5}
-  resilience: {enabled: false, remove_top_n: [5, 10, 20]}
-  anomalies: {enabled: false, near_threshold_kzt: 5500, round_amount_modulo: 100000}
+  # Money returning to a sender, and repeated A->B->C chains.
+  # `limit` caps enumeration; the report then says 'at least N'
+  # rather than stating a total it did not compute.
+  cycles: {enabled: true, length_bound: 5, limit: 200}
+  # What breaks when the top-N are removed, against a random-removal baseline.
+  resilience: {enabled: true, remove_top_n: [5, 10, 20]}
+  # Flags, never roles: amounts just above the reporting floor, round numbers,
+  # and accounts extreme for their own hop.
+  anomalies:
+    enabled: true
+    near_threshold_kzt: 5500      # "just above" the 5,000 floor
+    round_amount_modulo: 100000   # 100k and multiples read as round here
+    z_score: 3.0                  # extreme within the node's own depth group
   completeness: {enabled: true}
 
 # ===========================================================================
@@ -384,7 +396,7 @@ viewer:
   physics: false               # positions are precomputed, so maps open settled
   # How far apart nodes are placed. Raise it if maps still look cramped; the
   # value is scaled by node count, so it behaves on both small and large groups.
-  layout_spread: 190
+  layout_spread: 240
   role_colors:
     coordinator: "#b3202c"
     consolidator: "#d9822b"

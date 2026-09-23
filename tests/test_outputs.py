@@ -1038,6 +1038,212 @@ def test_readme_commands_exist():
         assert (ROOT / path).exists(), f"README references missing file {path}"
 
 
+# ----------------------------------------------- optional analyses (§8)
+
+def test_optional_analyses_are_implemented_not_just_configured(cfg):
+    """A config switch with no code behind it is a promise the solution does
+    not keep. Each enabled extra must produce output."""
+    import moneygraph.extras as ex
+
+    for name, fn in [("cycles", "find_cycles"), ("resilience", "resilience"),
+                     ("anomalies", "anomaly_flags")]:
+        if (cfg["extras"].get(name) or {}).get("enabled"):
+            assert hasattr(ex, fn), f"extras.{name} is enabled but {fn}() is missing"
+
+    report = OUT / "extras.json"
+    if not report.exists():
+        pytest.skip("extras not generated yet")
+    data = json.loads(report.read_text(encoding="utf-8"))
+    for name in ("cycles", "resilience", "anomalies"):
+        if (cfg["extras"].get(name) or {}).get("enabled"):
+            assert name in data, f"extras.{name} enabled but absent from extras.json"
+
+
+def test_resilience_compares_against_a_random_baseline():
+    """"The network fragments" means nothing without knowing what removing any
+    N accounts would do."""
+    path = OUT / "extras.json"
+    if not path.exists():
+        pytest.skip("extras not generated yet")
+    res = json.loads(path.read_text(encoding="utf-8")).get("resilience")
+    if not res:
+        pytest.skip("resilience not enabled")
+    assert res["removals"], "no removal scenarios recorded"
+    for row in res["removals"]:
+        assert "random_baseline" in row and "targeted" in row
+        assert row["random_drop_pct"] is not None
+
+
+def test_capped_enumerations_are_reported_as_lower_bounds():
+    """Reporting a capped count as a total states a number we did not compute."""
+    path = OUT / "extras.json"
+    if not path.exists():
+        pytest.skip("extras not generated yet")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    cycles = data.get("cycles")
+    if cycles and cycles.get("capped"):
+        report = (OUT / "extras_report.md").read_text(encoding="utf-8")
+        assert "At least" in report or "lower bound" in report, \
+            "the cycle count was capped but is reported as a total"
+
+
+def test_anomaly_flags_are_flags_not_roles():
+    """The brief is explicit: shown as flags, not roles."""
+    from moneygraph.roles import ROLE_PRECEDENCE
+
+    f = pd.read_parquet(OUT / "node_features.parquet")
+    if "n_flags" not in f.columns:
+        pytest.skip("anomalies not enabled")
+    assert set(f["role"]) <= set(ROLE_PRECEDENCE), \
+        "a flag leaked into the role column"
+
+
+# ------------------------------------------------- standalone frontend
+
+def test_frontend_files_exist():
+    for name in ("web/index.html", "web/styles.css", "web/app.js", "web/serve.py"):
+        assert (ROOT / name).exists(), f"{name} is missing"
+
+
+def test_web_data_has_everything_the_frontend_reads():
+    path = OUT / "web_data.json"
+    if not path.exists():
+        pytest.skip("web_data.json not generated yet")
+    d = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("meta", "i18n", "role_colors", "nodes", "edges", "clusters",
+                "top", "docs"):
+        assert key in d, f"web_data.json is missing `{key}`"
+    assert len(d["nodes"]) == len(pd.read_csv(OUT / "nodes_roles.csv"))
+    assert d["meta"]["n_nodes"] == len(d["nodes"])
+
+
+def test_web_data_carries_all_three_languages():
+    """The frontend switches language with no round trip, so every string it
+    shows must already be in the payload."""
+    path = OUT / "web_data.json"
+    if not path.exists():
+        pytest.skip("web_data.json not generated yet")
+    d = json.loads(path.read_text(encoding="utf-8"))
+    langs = set(d["i18n"]["languages"])
+    assert langs == {"en", "ru", "kk"}
+    for n in d["nodes"][:200]:
+        assert set(n["evidence"]) == langs, f"gid {n['gid']} lacks a language"
+        assert all(v.strip() for v in n["evidence"].values())
+    for r in d["top"]:
+        assert set(r["why"]) == langs
+    for c in d["clusters"][:30]:
+        assert set(c["hypothesis"]) == langs
+
+
+def test_frontend_loads_no_remote_assets():
+    """It must work with no internet: the brief allows a network call only for
+    the optional LLM API."""
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    for text, name in ((html, "index.html"), (js, "app.js")):
+        for marker in ("http://", "https://"):
+            for line in text.splitlines():
+                if marker in line and "xmlns" not in line and "//" != line.strip()[:2]:
+                    assert False, f"{name} references a remote asset: {line.strip()[:90]}"
+
+
+def test_frontend_server_confines_paths_to_the_outputs_folder(tmp_path):
+    """`/data/..` must not escape into the repository."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("mgserve", ROOT / "web" / "serve.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    handler = mod.Handler.__new__(mod.Handler)
+    out = mod.Handler.out_dir.resolve()
+    for attack in ("/data/../config.yaml", "/data/../../etc/passwd",
+                   "/data/../.env"):
+        resolved = Path(mod.Handler.translate_path(handler, attack)).resolve()
+        assert str(resolved).startswith(str(out)), \
+            f"{attack} escaped to {resolved}"
+
+
+# ------------------------------------------------ the docs stay truthful
+
+DOCS = ["README.md", "README.ru.md", "README.kk.md", "docs/demo_script.md"]
+
+
+def test_every_documented_flag_is_accepted_by_the_script():
+    """A README that tells a reviewer to run a flag the script rejects is worse
+    than no README."""
+    sh = (ROOT / "agent_run.sh").read_text(encoding="utf-8")
+    head = sh.index("while [[ $# -gt 0 ]]")
+    case = sh[head:sh.index("esac", head)]
+    accepted = set()
+    for m in re.finditer(r"^\s*(--?[a-z-]+(?:\|--?[a-z-]+)*)\)", case, re.M):
+        accepted |= set(m.group(1).split("|"))
+
+    text = " ".join((ROOT / d).read_text(encoding="utf-8") for d in DOCS)
+    used = set()
+    for chunk in re.findall(r"agent_run\.sh((?: +--?[a-z-]+(?: +[^\s#]+)?)*)", text):
+        used |= set(re.findall(r"--?[a-z-]+", chunk))
+    missing = used - accepted
+    assert not missing, f"documented but not accepted by agent_run.sh: {sorted(missing)}"
+
+
+def test_documented_python_snippets_run():
+    """Every `<<'PY'` block in the docs is executed as written."""
+    import subprocess
+
+    ran = 0
+    for doc in DOCS:
+        text = (ROOT / doc).read_text(encoding="utf-8")
+        for block in re.findall(r"<<'PY'\n(.*?)\nPY\n", text, re.S):
+            r = subprocess.run([sys.executable, "-c", block], cwd=ROOT,
+                               capture_output=True, text=True)
+            assert r.returncode == 0, (
+                f"{doc}: documented snippet failed\n{r.stderr[-600:]}")
+            ran += 1
+    assert ran >= 3, "expected the rule-trace snippet in each README"
+
+
+def test_documented_files_and_make_targets_exist():
+    text = " ".join((ROOT / d).read_text(encoding="utf-8") for d in DOCS)
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    for target in re.findall(r"make (\w+)", text):
+        assert re.search(rf"^{target}:", makefile, re.M), \
+            f"docs mention `make {target}` but the Makefile has no such target"
+    for path in ("requirements.txt", ".env.example", "config.yaml",
+                 "run.py", "app/app.py", "web/serve.py", "agent_run.sh"):
+        if path in text:
+            assert (ROOT / path).exists(), f"docs reference missing {path}"
+
+
+def test_frontend_headers_render_markup():
+    """Regression: hero() escaped its title, so the account header showed raw
+    `<span class="pill">` markup instead of the coloured role chip."""
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    line = next(l for l in js.splitlines() if l.startswith("function hero("))
+    assert "esc(h)" not in line, "hero() must not escape its title"
+    # and the call site that passes data must escape it itself
+    assert "esc(gid)" in js and "esc(roleName(n.role))" in js
+
+
+def test_graph_spacing_scales_with_node_count():
+    """A fixed spring length packs a 200-node cluster into an unreadable ball."""
+    js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    assert "springLength = Math.round" in js and "N *" in js, \
+        "frontend graph spacing does not scale with size"
+
+    m = _viewer()
+    small = m._layout(list(range(8)), pd.DataFrame(columns=["src", "dst"]))
+    big = m._layout(list(range(200)), pd.DataFrame(columns=["src", "dst"]))
+
+    def span(pos):
+        xs = [p[0] for p in pos.values()]
+        ys = [p[1] for p in pos.values()]
+        return max(max(xs) - min(xs), max(ys) - min(ys))
+
+    assert span(big) > span(small) * 3, \
+        f"large layouts must spread further: {span(small):.0f} vs {span(big):.0f}"
+
+
 # -------------------------------------------------- hardcoding guard (§15)
 
 def test_no_gid_like_literals_in_source(cfg):

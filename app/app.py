@@ -293,10 +293,13 @@ def _layout(gids: list[int], edges: pd.DataFrame) -> dict[int, tuple[float, floa
         if a in keep and b in keep:
             g.add_edge(int(a), int(b))
     n = max(len(gids), 1)
-    k = max(1.7, 10.0 / (n ** 0.5))
-    spread = float(VIEW.get("layout_spread", 190)) * (n ** 0.42)
+    # Spacing has to scale with size. A spread that looks right for a 12-node
+    # ego map packs a 200-node cluster into an unreadable ball, so both the
+    # target distance and the overall scale grow with the node count.
+    k = max(2.2, 12.0 / (n ** 0.5))
+    spread = float(VIEW.get("layout_spread", 240)) * (n ** 0.52)
     try:
-        pos = nx.spring_layout(g, k=k, iterations=200,
+        pos = nx.spring_layout(g, k=k, iterations=260,
                                seed=int(CFG.get("seed", 42)), scale=1.0)
     except Exception:
         pos = nx.circular_layout(g, scale=1.0)
@@ -426,14 +429,16 @@ def cluster_html(cluster_id: int, show_amounts: bool, lang: str) -> str:
     sub = S.edges[S.edges["src"].isin(gids) & S.edges["dst"].isin(gids)]
     ordered = sorted(int(n) for n in gids)
     pos = _layout(ordered, sub)
-    net = _network("640px")
+    # A 200-node group needs the room; a 3-node one does not.
+    height = int(min(840, max(540, 440 + len(ordered) * 1.6)))
+    net = _network(f"{height}px")
     for n in ordered:
         _add_node(net, n, lang, pos=pos.get(n))
     for e in sub.itertuples(index=False):
         _add_edge(net, e, show_amounts, lang)
     head = (warn(t("map.capped_cluster", lang, cap=cap, total=len(members)))
             if capped else "")
-    return head + _iframe(net.generate_html(notebook=False), 660,
+    return head + _iframe(net.generate_html(notebook=False), height + 20,
                           f"cluster-{cluster_id}-{int(show_amounts)}-{lang}")
 
 
@@ -1084,6 +1089,9 @@ if __name__ == "__main__":
     build().launch(
         server_name=a.host or os.environ.get("MONEYGRAPH_HOST") or VIEW["host"],
         server_port=int(a.port or os.environ.get("MONEYGRAPH_PORT") or VIEW["port"]),
-        share=share, show_api=False, inbrowser=False, quiet=False,
+        # Opens the browser itself, so the run ends with the interface on
+        # screen rather than a URL to copy.
+        share=share, show_api=False, quiet=False,
+        inbrowser=not _truthy(os.environ.get('MONEYGRAPH_NO_BROWSER')),
         # The maps live under output_files/_maps and are served from there.
         allowed_paths=[str(OUT)])

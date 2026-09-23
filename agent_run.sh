@@ -12,13 +12,20 @@
 #   ./agent_run.sh --use-existing  skip the pipeline entirely and open the viewer
 #                                  on the results already in the output folder
 #
+# Choosing an interface:
+#   --ui frontend    standalone web interface (DEFAULT) — static page, opens in
+#                    your browser, works with no internet
+#   --ui gradio      the Gradio interface, which can also publish a share link
+#   --ui none        no interface; same as --no-app
+#
 # Other options:
 #   --recalibrate    re-run the calibrator agent instead of reusing its saved file
 #   --no-app         stop after the exports are verified
-#   --no-share       viewer on localhost only, no public link
+#   --no-browser     do not open a browser automatically
+#   --no-share       Gradio on localhost only, no public link
 #   --skip-install   assume dependencies are already present
 #   --data DIR       read input from DIR instead of the configured folder
-#   --port N         viewer port
+#   --port N         interface port
 #
 # Exit codes: 0 all good · 1 pipeline failed · 2 exports missing or malformed
 #             3 environment problem
@@ -30,13 +37,15 @@ cd "$ROOT"
 
 # ----------------------------------------------------------------- options
 OFFLINE=0; RECALIBRATE=0; RUN_APP=1; SHARE=1; SKIP_INSTALL=0; PORT=""
-USE_EXISTING=0; DATA_DIR=""
+USE_EXISTING=0; DATA_DIR=""; UI="frontend"; OPEN_BROWSER=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --offline)      OFFLINE=1 ;;
     --use-existing) USE_EXISTING=1 ;;
     --recalibrate)  RECALIBRATE=1 ;;
     --no-app)       RUN_APP=0 ;;
+    --ui)           UI="${2:-frontend}"; shift ;;
+    --no-browser)   OPEN_BROWSER=0 ;;
     --no-share)     SHARE=0 ;;
     --skip-install) SKIP_INSTALL=1 ;;
     --data)         DATA_DIR="${2:-}"; shift ;;
@@ -46,6 +55,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+case "$UI" in
+  frontend|gradio) ;;
+  none) RUN_APP=0 ;;
+  *) echo "unknown --ui '$UI' (use frontend, gradio or none)" >&2; exit 3 ;;
+esac
 
 # ------------------------------------------------------------------ pretty
 if [[ -t 1 ]] && [[ "${TERM:-dumb}" != "dumb" ]]; then
@@ -470,60 +484,82 @@ if [[ $RUN_APP -eq 0 ]]; then
 fi
 
 # ================================================================== 6. app
-step "Viewer"
+step "Interface"
 
-APP_ARGS=()
-[[ $SHARE -eq 1 ]] && APP_ARGS+=(--share) || APP_ARGS+=(--no-share)
-[[ -n "$PORT" ]] && APP_ARGS+=(--port "$PORT")
+open_browser() {
+  # One place that knows how to open a URL, so both interfaces behave the same.
+  [[ $OPEN_BROWSER -eq 1 ]] || return 0
+  local url="$1"
+  ( sleep 1
+    if   command -v open       >/dev/null 2>&1; then open "$url"
+    elif command -v xdg-open   >/dev/null 2>&1; then xdg-open "$url"
+    elif command -v wslview    >/dev/null 2>&1; then wslview "$url"
+    else "$VPY" -c "import webbrowser,sys; webbrowser.open(sys.argv[1])" "$url"
+    fi ) >/dev/null 2>&1 &
+}
 
-info "starting Gradio…"
-[[ $SHARE -eq 1 ]] && info "requesting a public share link (first run downloads a small helper)"
+banner() {
+  printf '\n'
+  rule
+  printf '%s  Money Graph is up%s\n\n' "$B" "$R"
+  [[ -n "${1:-}" ]] && printf '    local    %s%s%s\n' "$B" "$1" "$R"
+  [[ -n "${2:-}" ]] && printf '    share    %s%s%s  %s(public, expires in a week)%s\n' \
+      "$B" "$2" "$R" "$DIM" "$R"
+  printf '\n    %sTabs:%s About · Start here · Who to review first · Account detail ·\n' "$DIM" "$R"
+  printf '          Groups · How it decided · Your data · Cost & timing · Downloads\n'
+  printf '\n    %sDemo path:%s open %sAccount detail%s, paste a gid — role, the exact rule\n' \
+      "$DIM" "$R" "$B" "$R"
+  printf '               that produced it, and a map of the money around it.\n'
+  printf '\n    %sCtrl+C to stop.%s\n' "$DIM" "$R"
+  rule
+}
 
-: > "$APP_LOG"
-# PYTHONUNBUFFERED: with stdout redirected to a file Python block-buffers, so
-# Gradio's "Running on local URL" line would not reach the log until it exits —
-# which is exactly when we need to read the URLs out of it.
-PYTHONUNBUFFERED=1 "$VPY" app/app.py ${APP_ARGS[@]+"${APP_ARGS[@]}"} >>"$APP_LOG" 2>&1 &
-APP_PID=$!
-
-LOCAL_URL=""; SHARE_URL=""
-for _ in $(seq 1 90); do
-  kill -0 "$APP_PID" 2>/dev/null || break
-  [[ -z "$LOCAL_URL" ]] && LOCAL_URL="$(grep -oE 'http://(127\.0\.0\.1|localhost|0\.0\.0\.0):[0-9]+' "$APP_LOG" | head -n1 || true)"
-  [[ -z "$SHARE_URL" ]] && SHARE_URL="$(grep -oE 'https://[a-z0-9-]+\.gradio\.live' "$APP_LOG" | head -n1 || true)"
-  if [[ -n "$LOCAL_URL" ]] && { [[ -n "$SHARE_URL" ]] || [[ $SHARE -eq 0 ]]; }; then break; fi
-  sleep 1
-done
-
-if ! kill -0 "$APP_PID" 2>/dev/null; then
-  fail "the viewer exited on startup — log: $APP_LOG"
-  tail -n 20 "$APP_LOG" || true
-  exit 1
-fi
-
-# Gradio should have printed it; if the line was swallowed, fall back to the
-# port we asked for rather than showing nothing.
-if [[ -z "$LOCAL_URL" ]]; then
-  FALLBACK_PORT="${PORT:-$("$VPY" -c "import yaml;print(yaml.safe_load(open('config.yaml'))['viewer']['port'])" 2>/dev/null || echo 7860)}"
-  LOCAL_URL="http://127.0.0.1:${FALLBACK_PORT}"
-fi
-
-printf '\n'
-rule
-printf '%s  Money Graph is up%s\n\n' "$B" "$R"
-[[ -n "$LOCAL_URL" ]]  && printf '    local    %s%s%s\n' "$B" "$LOCAL_URL" "$R"
-if [[ $SHARE -eq 1 ]]; then
-  if [[ -n "$SHARE_URL" ]]; then
-    printf '    share    %s%s%s  %s(public, expires in 1 week)%s\n' "$B" "$SHARE_URL" "$R" "$DIM" "$R"
-  else
-    printf '    share    %snot ready yet — watch %s%s\n' "$YLW" "$APP_LOG" "$R"
+if [[ "$UI" == "frontend" ]]; then
+  PORT_ARG=(--port "${PORT:-8000}")
+  [[ $OPEN_BROWSER -eq 0 ]] && PORT_ARG+=(--no-browser)
+  info "starting the standalone interface…"
+  : > "$APP_LOG"
+  PYTHONUNBUFFERED=1 "$VPY" web/serve.py "${PORT_ARG[@]}" >>"$APP_LOG" 2>&1 &
+  APP_PID=$!
+  LOCAL_URL=""
+  for _ in $(seq 1 40); do
+    kill -0 "$APP_PID" 2>/dev/null || break
+    LOCAL_URL="$(grep -oE 'http://[0-9.]+:[0-9]+/?' "$APP_LOG" | head -n1 || true)"
+    [[ -n "$LOCAL_URL" ]] && break
+    sleep .25
+  done
+  if ! kill -0 "$APP_PID" 2>/dev/null; then
+    fail "the interface exited on startup — log: $APP_LOG"
+    tail -n 20 "$APP_LOG" || true
+    exit 1
   fi
+  [[ -z "$LOCAL_URL" ]] && LOCAL_URL="http://127.0.0.1:${PORT:-8000}/"
+  banner "$LOCAL_URL" ""
+  wait "$APP_PID"
+else
+  APP_ARGS=()
+  [[ $SHARE -eq 1 ]] && APP_ARGS+=(--share) || APP_ARGS+=(--no-share)
+  [[ -n "$PORT" ]] && APP_ARGS+=(--port "$PORT")
+  info "starting Gradio…"
+  [[ $SHARE -eq 1 ]] && info "requesting a public share link (first run fetches a small helper)"
+  : > "$APP_LOG"
+  PYTHONUNBUFFERED=1 "$VPY" app/app.py ${APP_ARGS[@]+"${APP_ARGS[@]}"} >>"$APP_LOG" 2>&1 &
+  APP_PID=$!
+  LOCAL_URL=""; SHARE_URL=""
+  for _ in $(seq 1 90); do
+    kill -0 "$APP_PID" 2>/dev/null || break
+    [[ -z "$LOCAL_URL" ]] && LOCAL_URL="$(grep -oE 'http://(127\.0\.0\.1|localhost|0\.0\.0\.0):[0-9]+' "$APP_LOG" | head -n1 || true)"
+    [[ -z "$SHARE_URL" ]] && SHARE_URL="$(grep -oE 'https://[a-z0-9-]+\.gradio\.live' "$APP_LOG" | head -n1 || true)"
+    if [[ -n "$LOCAL_URL" ]] && { [[ -n "$SHARE_URL" ]] || [[ $SHARE -eq 0 ]]; }; then break; fi
+    sleep 1
+  done
+  if ! kill -0 "$APP_PID" 2>/dev/null; then
+    fail "the viewer exited on startup — log: $APP_LOG"
+    tail -n 20 "$APP_LOG" || true
+    exit 1
+  fi
+  [[ -z "$LOCAL_URL" ]] && LOCAL_URL="http://127.0.0.1:${PORT:-7860}"
+  open_browser "${SHARE_URL:-$LOCAL_URL}"
+  banner "$LOCAL_URL" "$SHARE_URL"
+  wait "$APP_PID"
 fi
-printf '\n    %sTabs:%s Start here · Who to review first · Account detail · Groups ·\n' "$DIM" "$R"
-printf '          Ask · How it decided · Your data · Cost & timing · Downloads\n'
-printf '\n    %sDemo path:%s open %sAccount detail%s, paste a gid, and the page shows its role,\n' "$DIM" "$R" "$B" "$R"
-printf '               the exact rule that produced it, and a map of the money around it.\n' 
-printf '\n    %sCtrl+C to stop.%s\n' "$DIM" "$R"
-rule
-
-wait "$APP_PID"
