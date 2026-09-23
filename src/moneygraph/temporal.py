@@ -1,4 +1,4 @@
-"""Temporal features (guideline §7, brief §8 "temporal patterns").
+"""Temporal features (task guidelines §7, brief §8 "temporal patterns").
 
 Timing is what separates "balanced in and out" from "money did not stop here".
 Two accounts can have an identical pass-through ratio while one forwards within

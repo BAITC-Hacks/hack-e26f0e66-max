@@ -1,4 +1,4 @@
-"""The rule engine (guideline §8, brief must-have 3).
+"""The rule engine (task guidelines §8, brief must-have 3).
 
 This module is the only thing in the repository that decides a role. It is
 deliberately boring: a fixed list of gates, each a comparison between one

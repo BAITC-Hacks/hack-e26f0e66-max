@@ -54,7 +54,7 @@ class Dataset:
 
     @property
     def max_depth(self) -> int:
-        """Traversal depth read from the data, never hardcoded (guideline §6)."""
+        """Traversal depth read from the data, never hardcoded (task guidelines §6)."""
         return int(self.nodes["depth"].max())
 
     @property

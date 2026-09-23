@@ -6,6 +6,8 @@ financial structure of an organized group from a transaction network.*
 The brief asks for "a live run and a substantive walkthrough of 2–3 nodes".
 This is that, timed, with the actual account numbers from the committed run.
 
+> 🎬 **Recorded walkthrough:** [demo video](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)
+>
 > Every figure below is reproducible: run `./agent_run.sh --offline --no-app`
 > and the same accounts come out, because the pipeline is deterministic and the
 > agent-chosen thresholds are committed in `config.calibrated.yaml`.

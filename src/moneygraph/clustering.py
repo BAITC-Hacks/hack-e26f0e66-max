@@ -1,4 +1,4 @@
-"""Clustering (guideline §9).
+"""Clustering (task guidelines §9).
 
 Louvain runs on the **undirected** projection, which is a real concession: the
 starter README warns that dropping direction erases the point of the case. It

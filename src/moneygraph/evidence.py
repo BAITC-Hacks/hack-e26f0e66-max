@@ -1,4 +1,4 @@
-"""Evidence, `why` and cluster hypotheses (guideline §11, brief §9 wording).
+"""Evidence, `why` and cluster hypotheses (task guidelines §11, brief §9 wording).
 
 Two layers, in this order:
 

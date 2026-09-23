@@ -1,4 +1,4 @@
-"""Priority score (guideline §10).
+"""Priority score (task guidelines §10).
 
 A weighted sum of percentile ranks, not of raw values. Percentiles matter: raw
 turnover spans four orders of magnitude, so a single large transfer would

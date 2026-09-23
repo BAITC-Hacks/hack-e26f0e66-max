@@ -1,4 +1,4 @@
-"""Orchestration (guideline §5). No analytical logic lives here.
+"""Orchestration (task guidelines §5). No analytical logic lives here.
 
 The shape of a run:
 
@@ -29,8 +29,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import (attribution, clustering, evidence, export, extras, features,
-               graph, priority, roles, temporal)
+from . import (attribution, clustering, deliverables, evidence, export,
+               extras, features, graph, priority, roles, temporal)
 from .agents.llm import LLMClient
 from .agents.orchestrator import Crew, build_brief
 from .io import Dataset, load_config, load_dataset
@@ -267,6 +267,11 @@ def _run_stages(cfg: dict, data_dir, out_dir: Path, tracer: RunTracer,
                                       default=str), out_dir)
         for p in paths:
             print(f"     wrote {p.name}")
+
+        # The jury-facing bundle, refreshed every run so it cannot drift from
+        # the numbers the run actually produced.
+        bundle, names = deliverables.publish(config_dir, out_dir)
+        print(f"     bundled {len(names)} deliverable(s) into {bundle.name}/")
 
 
 # ---------------------------------------------------------------------------

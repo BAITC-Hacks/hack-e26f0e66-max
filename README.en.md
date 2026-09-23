@@ -4,6 +4,8 @@ Reconstructing the financial structure of an organized group from a transaction
 network. **Track 2 — Finances.** HackAlem AI case.
 
 > Languages: [Русский](README.md) · **English** · [Қазақша](README.kk.md)
+>
+> 🎬 **[Demo video](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)**
 
 ```bash
 ./agent_run.sh
@@ -808,8 +810,9 @@ In the order things would bite:
 ├── requirements.txt             # pinned versions
 ├── .env.example                 # three model setups
 ├── Makefile                     # make run | offline | existing | test
-├── guideline.md                 # the working brief
+├── task_guidelines.md           # the working brief
 ├── README.md / README.ru.md / README.kk.md
+├── final_deliverables/          # the jury-facing bundle (generated)
 ├── data/                        # organizers' input files            (read-only)
 ├── starter/                     # organizers' starter code           (read-only)
 ├── src/moneygraph/

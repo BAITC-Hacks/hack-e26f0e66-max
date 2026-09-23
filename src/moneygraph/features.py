@@ -1,4 +1,4 @@
-"""Structural and flow metrics per node (guideline §7).
+"""Structural and flow metrics per node (task guidelines §7).
 
 Undefined is NaN, never a silent zero: a pass-through ratio that cannot be
 computed must stay uncomputed, otherwise a node whose outflow was never traced

@@ -1,4 +1,4 @@
-"""Phase 0 data profiling (guideline §3).
+"""Phase 0 data profiling (task guidelines §3).
 
 Prints a report and writes ``outputs/profile_report.md``. Every fact the brief
 announces is checked against the actual files; a mismatch is reported loudly
@@ -304,7 +304,7 @@ def _profile_rest(r: Report, ds: Dataset, cfg: dict, flows: pd.DataFrame,
         r.p(f"  Their outgoing edges point to nodes at depths {tgt_depths} — i.e. back to "
             f"nodes already discovered earlier, not to new nodes beyond the frontier.")
     r.p(f"- Consequence: for depth-{max_depth} nodes outflow is **unknown, not zero**. "
-        f"`terminal` is never assigned there (guideline §8.2).")
+        f"`terminal` is never assigned there (task guidelines §8.2).")
 
     # ------------------------------------------------------- seed peculiarity
     r.h("4. Seeds")
@@ -352,7 +352,7 @@ def _profile_rest(r: Report, ds: Dataset, cfg: dict, flows: pd.DataFrame,
         nz = flows.loc[flows[col] > 0, col]
         r.p(f"| {col} | {len(nz)} | " + " | ".join(f"{nz.quantile(q):.0f}" for q in PERCENTILES) + " |")
 
-    # counts that the role gates will produce, at the guideline's starting values
+    # counts that the role gates will produce, at the task guidelines' starting values
     r.h("7. Candidate counts at the thresholds currently in `config.yaml`")
     rc = cfg["roles"]
     cons_min, cons_strong = rc["consolidator"]["min_payers"], rc["consolidator"]["strong_payers"]
@@ -387,7 +387,7 @@ def _profile_rest(r: Report, ds: Dataset, cfg: dict, flows: pd.DataFrame,
         f"correct but carries little information on its own. Priority must not "
         f"lean on it — hence the low role weight in `config.yaml`.")
     r.p()
-    r.p(f"Degenerate-outcome watch (guideline §16): no gate above claims more "
+    r.p(f"Degenerate-outcome watch (task guidelines §16): no gate above claims more "
         f"than a few percent of the graph except `terminal`, and none claims "
         f"zero nodes.")
 
@@ -397,7 +397,7 @@ def _profile_rest(r: Report, ds: Dataset, cfg: dict, flows: pd.DataFrame,
         for m in r.mismatches:
             r.p(f"- **{m}**")
         r.p()
-        r.p("Per guideline §0: the organizers' files win. Update `guideline.md` "
+        r.p("Per task guidelines §0: the organizers' files win. Update `task_guidelines.md` "
             "and `config.yaml` to match the numbers above.")
     else:
         r.p("None. Every announced fact reproduces from the files as given.")

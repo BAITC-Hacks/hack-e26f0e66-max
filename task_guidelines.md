@@ -1,4 +1,4 @@
-# guideline.md — Money Graph (HackAlem AI)
+# task_guidelines.md — Money Graph (HackAlem AI)
 
 This file is the working brief for Claude Code. Read it fully before writing any code, and re-read the relevant section before each phase. When something here conflicts with the organizers' `data/README.md` or the `starter/` code on a factual point (column names, dtypes, paths), the organizers' files win. Update this guideline to match, and tell the user.
 
@@ -66,8 +66,8 @@ There is no ground truth. We are judged on **how well the criteria are justified
 
 ```
 money-graph/
-├── guideline.md                # this file (also referenced from CLAUDE.md)
-├── CLAUDE.md                   # short pointer: "Follow guideline.md"
+├── task_guidelines.md          # this file (also referenced from CLAUDE.md)
+├── CLAUDE.md                   # short pointer: "Follow task_guidelines.md"
 ├── README.md                   # jury-facing documentation (see §13)
 ├── requirements.txt
 ├── Makefile                    # make setup | make run | make app | make test

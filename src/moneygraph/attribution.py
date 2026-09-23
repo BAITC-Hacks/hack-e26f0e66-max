@@ -1,4 +1,4 @@
-"""Seed-money attribution (guideline §7) — our original contribution.
+"""Seed-money attribution (task guidelines §7) — our original contribution.
 
 Two questions the raw degrees cannot answer:
 

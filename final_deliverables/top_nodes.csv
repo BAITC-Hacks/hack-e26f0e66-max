@@ -1,0 +1,31 @@
+rank,gid,role,priority_score,why
+1,100000004015047100,coordinator,0.975178,Classified coordinator; estimated 626k KZT of seed-originated flow passes through; money from 11 seeds can reach it; forwards 8% of inflow.
+2,100000003115284100,coordinator,0.968083,Classified coordinator; estimated 909k KZT of seed-originated flow passes through; money from 11 seeds can reach it; forwards 24% of inflow.
+3,100000008165763100,coordinator,0.942994,Classified coordinator; estimated 189k KZT of seed-originated flow passes through; money from 9 seeds can reach it; forwards 109% of inflow.
+4,100000002718366100,coordinator,0.914001,Classified coordinator; estimated 51k KZT of seed-originated flow passes through; money from 9 seeds can reach it; forwards 0% of inflow.
+5,100000001253557100,coordinator,0.910943,Classified coordinator; estimated 33k KZT of seed-originated flow passes through; money from 10 seeds can reach it; forwards 0% of inflow.
+6,100000002838861100,consolidator,0.910503,Classified consolidator; estimated 403k KZT of seed-originated flow passes through; money from 8 seeds can reach it; forwards 2% of inflow.
+7,100000007594394100,coordinator,0.871986,Classified coordinator; money from 9 seeds can reach it; estimated 7k KZT of seed-originated flow passes through; forwards 854% of inflow.
+8,100000004156082100,consolidator,0.856366,Classified consolidator; estimated 264k KZT of seed-originated flow passes through; receives from 5 different payers incl. 1 seed; forwards 615% of inflow.
+9,100000001303311100,coordinator,0.849978,Classified coordinator; money from 9 seeds can reach it; estimated 4k KZT of seed-originated flow passes through; forwards 0% of inflow.
+10,100000002398779100,consolidator,0.840852,Classified consolidator; estimated 31k KZT of seed-originated flow passes through; money from 8 seeds can reach it; forwards 6% of inflow.
+11,100000001282143100,coordinator,0.831094,Classified coordinator; money from 10 seeds can reach it; receives from 5 different payers; forwards 0% of inflow.
+12,100000008144528100,consolidator,0.822447,Classified consolidator; estimated 36k KZT of seed-originated flow passes through; receives from 5 different payers; forwards 0% of inflow.
+13,100000004299488100,consolidator,0.820545,Classified consolidator; estimated 421k KZT of seed-originated flow passes through; receives from 6 different payers incl. 1 seed; forwards 20% of inflow.
+14,100000007055802100,consolidator,0.817653,Classified consolidator; estimated 257k KZT of seed-originated flow passes through; receives from 6 different payers incl. 1 seed; forwards 30% of inflow.
+15,100000002957306100,terminal,0.81607,Estimated 426k KZT of seed-originated flow passes through; money from 11 seeds can reach it; classified terminal; forwards 0% of inflow.
+16,100000002894076100,terminal,0.815959,Estimated 828k KZT of seed-originated flow passes through; money from 10 seeds can reach it; classified terminal; forwards 0% of inflow.
+17,100000008547948100,consolidator,0.81147,Classified consolidator; money from 8 seeds can reach it; estimated 6k KZT of seed-originated flow passes through; forwards 999% of inflow.
+18,100000001924185100,terminal,0.807618,Estimated 162k KZT of seed-originated flow passes through; money from 11 seeds can reach it; classified terminal; forwards 0% of inflow.
+19,100000003404627100,terminal,0.807329,Estimated 2.6M KZT of seed-originated flow passes through; money from 11 seeds can reach it; classified terminal; forwards 0% of inflow.
+20,100000008244300100,consolidator,0.804698,Classified consolidator; estimated 9k KZT of seed-originated flow passes through; money from 8 seeds can reach it; forwards 0% of inflow.
+21,100000002224132100,consolidator,0.804119,Classified consolidator; estimated 181k KZT of seed-originated flow passes through; receives from 5 different payers; forwards 307% of inflow.
+22,100000004105288100,terminal,0.803837,Estimated 114k KZT of seed-originated flow passes through; money from 11 seeds can reach it; classified terminal; forwards 0% of inflow.
+23,100000001072022100,terminal,0.802447,Estimated 792k KZT of seed-originated flow passes through; money from 10 seeds can reach it; classified terminal; forwards 0% of inflow.
+24,100000008730846100,consolidator,0.800961,Classified consolidator; money from 8 seeds can reach it; receives from 7 different payers; forwards 234% of inflow.
+25,100000002547110100,consolidator,0.796679,Classified consolidator; money from 8 seeds can reach it; receives from 6 different payers; forwards 0% of inflow.
+26,100000002605548100,terminal,0.795985,Estimated 102k KZT of seed-originated flow passes through; money from 10 seeds can reach it; classified terminal; forwards 0% of inflow.
+27,100000005778283100,terminal,0.792949,Estimated 361k KZT of seed-originated flow passes through; money from 9 seeds can reach it; classified terminal; forwards 0% of inflow.
+28,100000003158727100,terminal,0.790836,Estimated 177k KZT of seed-originated flow passes through; money from 9 seeds can reach it; classified terminal; forwards 0% of inflow.
+29,100000008686313100,consolidator,0.790429,Classified consolidator; estimated 235k KZT of seed-originated flow passes through; receives from 6 different payers incl. 1 seed; forwards 17% of inflow.
+30,100000005432267100,terminal,0.785754,Estimated 265k KZT of seed-originated flow passes through; money from 10 seeds can reach it; classified terminal; forwards 0% of inflow.

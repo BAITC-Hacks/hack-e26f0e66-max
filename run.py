@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Single entry point (brief must-have 1, guideline §2).
+"""Single entry point (brief must-have 1, task guidelines §2).
 
     python run.py                                        # defaults below
     python run.py --data data --out output_files --config config.yaml

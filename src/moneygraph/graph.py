@@ -1,4 +1,4 @@
-"""Graph construction (guideline §6)."""
+"""Graph construction (task guidelines §6)."""
 
 from __future__ import annotations
 

@@ -73,7 +73,7 @@ Column mapping (how each input column was resolved):
 
 - MAX_DEPTH read from the data: **4**.
 - Nodes at depth 4: **444**, of which **0** do have outgoing edges.
-- Consequence: for depth-4 nodes outflow is **unknown, not zero**. `terminal` is never assigned there (guideline §8.2).
+- Consequence: for depth-4 nodes outflow is **unknown, not zero**. `terminal` is never assigned there (task guidelines §8.2).
 
 ## 4. Seeds
 
@@ -140,7 +140,7 @@ Non-zero-only percentiles (the zeros are structural: leaves have no outflow, see
 
 The terminal gate is broad: **1143** nodes, of which **1079** have no outgoing edge at all. Those were genuinely expanded by the crawl and had nothing >= 5,000 KZT leaving them, so `terminal` is correct but carries little information on its own. Priority must not lean on it — hence the low role weight in `config.yaml`.
 
-Degenerate-outcome watch (guideline §16): no gate above claims more than a few percent of the graph except `terminal`, and none claims zero nodes.
+Degenerate-outcome watch (task guidelines §16): no gate above claims more than a few percent of the graph except `terminal`, and none claims zero nodes.
 
 ## 8. Mismatches to act on
 

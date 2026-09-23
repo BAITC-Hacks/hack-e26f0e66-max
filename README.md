@@ -4,6 +4,8 @@
 **Трек 2 — Финансы.** Кейс HackAlem AI.
 
 > Языки: **Русский** · [English](README.en.md) · [Қазақша](README.kk.md)
+>
+> 🎬 **[Видео-демонстрация решения](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)**
 
 ```bash
 ./agent_run.sh
@@ -811,7 +813,8 @@ hypothesis`. `sum_kzt_internal` суммирует рёбра с обоими к
 ├── requirements.txt             # закреплённые версии
 ├── .env.example                 # три варианта настройки модели
 ├── Makefile                     # make run | offline | existing | test
-├── guideline.md                 # рабочее техзадание
+├── task_guidelines.md           # рабочее техзадание
+├── final_deliverables/          # итоговые файлы для жюри (генерируется)
 ├── data/                        # входные файлы организаторов        (только чтение)
 ├── starter/                     # стартовый код организаторов        (только чтение)
 ├── src/moneygraph/

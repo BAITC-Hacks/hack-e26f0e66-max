@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Follow `guideline.md` (the working brief) and `docs/case_brief.docx` (the
+Follow `task_guidelines.md` (the working brief) and `docs/case_brief.docx` (the
 organizers' case brief). Where they disagree on a fact, the organizers win.
 
 The architecture rule that overrides convenience, every time:

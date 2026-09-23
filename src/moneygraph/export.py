@@ -1,4 +1,4 @@
-"""Write the deliverables (brief §5, guideline §5).
+"""Write the deliverables (brief §5, task guidelines §5).
 
 Column order and dtypes are fixed because the jury checks them mechanically.
 Extra columns are allowed and useful, so `node_features.parquet` carries every

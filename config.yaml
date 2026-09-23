@@ -1,5 +1,5 @@
 # ============================================================================
-# Money Graph — every threshold and weight lives here (guideline.md §16).
+# Money Graph — every threshold and weight lives here (task_guidelines.md §16).
 # No magic numbers in src/ or app/. No gids here or anywhere else.
 #
 # Every value below carries the distribution it came from. Percentiles are from
@@ -13,7 +13,7 @@ seed: 42                       # single random seed for Louvain and layouts
 # Facts announced in the brief and in data/README.md. They live here rather
 # than in code so that profile.py contains no numeric literals at all, and so
 # that a change in the organizers' data is a one-line config edit. Every one of
-# these is CHECKED against the files, never trusted (guideline §3).
+# these is CHECKED against the files, never trusted (task guidelines §3).
 # ---------------------------------------------------------------------------
 expected:
   n_nodes: 2248
@@ -42,7 +42,7 @@ paths:
   outputs: output_files        # all deliverables land here
 
 # ---------------------------------------------------------------------------
-# Role gates (guideline §8.2). Values are round and explainable on purpose —
+# Role gates (task guidelines §8.2). Values are round and explainable on purpose —
 # "at least 5 distinct payers" defends to a jury; "4.7" does not.
 # ---------------------------------------------------------------------------
 roles:
@@ -100,7 +100,7 @@ roles:
     require_consolidator_gate: true
     min_key_payers: 2            # payers whose own role is consolidator/distributor/transit
     # seed_reach is NEVER used as an absolute. Its range is entirely
-    # data-dependent: here p50=7 and max=15, so the guideline's ">= 5" selects
+    # data-dependent: here p50=7 and max=15, so the task guidelines' ">= 5" selects
     # 71% of the graph and carries no information. A percentile rescales with
     # whatever input the tool is pointed at.
     min_seed_reach_percentile: 0.90
@@ -110,7 +110,7 @@ roles:
     min_payer_clusters: 2
 
 # ---------------------------------------------------------------------------
-# role_score (guideline §8.4)
+# role_score (task guidelines §8.4)
 # ---------------------------------------------------------------------------
 scoring:
   base: 0.5                      # a passed gate is worth 0.5 before strength
@@ -122,7 +122,7 @@ scoring:
   cutoff_fixed: 0.7              # traversal artifact, stated as such
 
 # ---------------------------------------------------------------------------
-# Clustering (guideline §9)
+# Clustering (task guidelines §9)
 # ---------------------------------------------------------------------------
 clustering:
   resolution: 1.0                # Louvain default; raise to split the 1,877-node component
@@ -131,7 +131,7 @@ clustering:
   max_hypothesis_chars: 250
 
 # ---------------------------------------------------------------------------
-# Priority score (guideline §10). Weights sum to 1.0; components are percentile
+# Priority score (task guidelines §10). Weights sum to 1.0; components are percentile
 # ranks, so no single raw amount can dominate.
 # ---------------------------------------------------------------------------
 priority:
@@ -160,7 +160,7 @@ priority:
   top_n: 30                      # top_nodes.csv rows (>= 20 required)
 
 # ---------------------------------------------------------------------------
-# Evidence and wording (guideline §2, §11)
+# Evidence and wording (task guidelines §2, §11)
 # ---------------------------------------------------------------------------
 evidence:
   max_chars: 200
@@ -174,7 +174,7 @@ evidence:
     - confirmed
 
 # ---------------------------------------------------------------------------
-# Optional features (guideline §14). Off by default so the must-haves stay fast.
+# Optional features (task guidelines §14). Off by default so the must-haves stay fast.
 # ---------------------------------------------------------------------------
 # All deterministic and cheap (well under a second each on this volume), so
 # they are on. Turn one off if it ever stops being cheap.
@@ -233,7 +233,7 @@ input:
 
 # ===========================================================================
 # LLM + AGENT LAYER
-# Hard rule (brief §9, guideline §2): agents NEVER decide a role, a score, a
+# Hard rule (brief §9, task guidelines §2): agents NEVER decide a role, a score, a
 # cluster or a rank. Those come from the rule engine in roles.py, the Louvain
 # run in clustering.py and the weighted sum in priority.py. Agents map input
 # schemas, phrase text that a validator checks against the rule trace, answer

@@ -1,4 +1,4 @@
-"""Output contract tests (guideline §15, brief §7 verification methods).
+"""Output contract tests (task guidelines §15, brief §7 verification methods).
 
 The CSV tests skip until `output_files/nodes_roles.csv` exists and become real
 the moment it does. Everything else — the input contract, the config contract,
@@ -1407,6 +1407,49 @@ def test_graph_spacing_scales_with_node_count():
 
     assert span(big) > span(small) * 3, \
         f"large layouts must spread further: {span(small):.0f} vs {span(big):.0f}"
+
+
+# ------------------------------------------------ the deliverables bundle
+
+def test_deliverables_bundle_is_complete():
+    """The brief (§10) names these by hand; a reviewer should not hunt for them."""
+    bundle = ROOT / "final_deliverables"
+    if not bundle.exists():
+        pytest.skip("bundle not generated yet — run the pipeline")
+    for name in ("nodes_roles.csv", "clusters.csv", "top_nodes.csv",
+                 "diagram.md", "README.md"):
+        assert (bundle / name).exists(), f"final_deliverables/{name} is missing"
+
+
+def test_deliverables_are_byte_identical_to_their_sources():
+    """A hand-copied deliverable goes stale — it keeps the numbers of whichever
+    run someone last remembered to copy. These are refreshed by the pipeline,
+    and this proves they were."""
+    import hashlib
+
+    bundle = ROOT / "final_deliverables"
+    if not bundle.exists():
+        pytest.skip("bundle not generated yet")
+
+    def digest(path):
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    for name in ("nodes_roles.csv", "clusters.csv", "top_nodes.csv"):
+        assert digest(bundle / name) == digest(OUT / name), (
+            f"final_deliverables/{name} differs from {OUT.name}/{name} — "
+            f"the bundle is stale")
+    assert digest(bundle / "diagram.md") == digest(ROOT / "docs" / "diagram.md")
+
+
+def test_deliverables_readme_explains_the_demo_format():
+    """The brief asks for a live demo, not a recording; saying so where the
+    bundle is collected saves an avoidable misunderstanding."""
+    text = (ROOT / "final_deliverables" / "README.md").read_text(encoding="utf-8") \
+        if (ROOT / "final_deliverables" / "README.md").exists() else ""
+    if not text:
+        pytest.skip("bundle not generated yet")
+    assert "live" in text.lower()
+    assert "demo_script" in text
 
 
 # -------------------------------------------------- hardcoding guard (§15)
