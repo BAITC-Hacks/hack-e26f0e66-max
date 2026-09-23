@@ -1,0 +1,18 @@
+# Money Graph — pinned for reproducibility (guideline.md §4).
+# Core pipeline
+pandas==2.3.2
+pyarrow==21.0.0
+numpy==2.3.3
+networkx==3.5
+PyYAML==6.0.2
+
+# Viewer
+streamlit==1.49.1
+pyvis==0.3.2
+
+# Tests
+pytest==8.4.2
+
+# Optional assistant (imported lazily, only when ANTHROPIC_API_KEY is set).
+# Uncomment for the LLM-phrased answers; the pipeline and viewer never need it.
+# anthropic==0.69.0

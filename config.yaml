@@ -1,0 +1,153 @@
+# ============================================================================
+# Money Graph — every threshold and weight lives here (guideline.md §16).
+# No magic numbers in src/ or app/. No gids here or anywhere else.
+#
+# Every value below carries the distribution it came from. Percentiles are from
+# outputs/profile_report.md §6, computed over all 2,248 nodes. Re-run
+# `python -m moneygraph.profile` after any data change and re-check these.
+# ============================================================================
+
+seed: 42                       # single random seed for Louvain and layouts
+
+paths:
+  data: data
+  outputs: outputs
+
+# ---------------------------------------------------------------------------
+# Role gates (guideline §8.2). Values are round and explainable on purpose —
+# "at least 5 distinct payers" defends to a jury; "4.7" does not.
+# ---------------------------------------------------------------------------
+roles:
+  # Switch for the documented 7th role. False -> those nodes become peripheral
+  # with a cut-off note in the evidence.
+  use_extended_roles: true
+
+  consolidator:
+    # in_deg p95 = 3, p99 = 6, max = 24. A cut at 5 selects 51 nodes (2.3%),
+    # i.e. just inside the top percentile: "receives from an unusual number of
+    # distinct payers" rather than "receives from more than one person".
+    min_payers: 5
+    # 10 payers selects 7 nodes (~p99.7). Full confidence is reached there.
+    strong_payers: 10
+
+  distributor:
+    # out_deg p95 = 5, p99 = 24, max = 116. A cut at 10 selects 64 nodes (2.8%).
+    min_recipients: 10
+    # Fan-out must also dominate fan-in, otherwise a busy hub that both collects
+    # and pays out would be filed as a distributor. 10-and-3x selects 56 nodes.
+    fan_ratio: 3
+    # 50 recipients selects 8 nodes — the visible top of the distribution.
+    strong_recipients: 50
+
+  transit:
+    # Money in ~= money out. The band [0.8, 1.2] holds 70 non-seed nodes
+    # (72 if seeds are counted, which we do not: their inflow is understated).
+    ratio_low: 0.8
+    ratio_high: 1.2
+    # Speed turns "balanced" into "consistent with transit": forwarded within
+    # this many days of an inflow. 2 days keeps it inside a working week.
+    max_lag_days: 2
+    # Share of outgoing KZT forwarded that fast, above which confidence is boosted.
+    fast_pass_boost_share: 0.5
+
+  terminal:
+    # Money arrives and stays: at most 10% forwarded.
+    max_pass: 0.1
+    # NOTE (profile §7): this gate matches 1,143 nodes at depth < MAX_DEPTH,
+    # of which 1,079 have no outgoing edge at all. That is not a bug — those
+    # nodes WERE expanded by the crawl and simply had nothing >= 5,000 KZT
+    # leaving them. It is still half the graph, so `terminal` carries little
+    # information on its own; priority is driven by the other components, and
+    # peripheral/terminal nodes get the lowest role weight below.
+    # `terminal` is never assigned at MAX_DEPTH — that is the 444-false-sinks fix.
+
+  coordinator:
+    # Second pass. Money from several collectors converging, with wide seed
+    # reach, is the signature of an upper-level node.
+    min_key_payers: 2            # payers whose own role is consolidator/distributor/transit
+    min_seed_reach: 5            # distinct seeds with a directed path to the node
+    # Alternative route in: extreme seed reach plus money arriving from more
+    # than one cluster. The reach cut is a percentile, so it rescales with data.
+    seed_reach_percentile: 0.99
+    min_payer_clusters: 2
+
+# ---------------------------------------------------------------------------
+# role_score (guideline §8.4)
+# ---------------------------------------------------------------------------
+scoring:
+  base: 0.5                      # a passed gate is worth 0.5 before strength
+  span: 0.5                      # strength between threshold and "strong" adds up to 0.5
+  penalty_max_depth: 0.8         # outflow unknown -> the role is less certain
+  penalty_unreliable_inflow: 0.8 # inflow understated (seeds) -> likewise
+  peripheral_quiet: 0.9          # <= 1 edge: confident that nothing is going on
+  peripheral_noisy: 0.6          # several edges but no gate passed: less confident
+  cutoff_fixed: 0.7              # traversal artifact, stated as such
+
+# ---------------------------------------------------------------------------
+# Clustering (guideline §9)
+# ---------------------------------------------------------------------------
+clustering:
+  resolution: 1.0                # Louvain default; raise to split the 1,877-node component
+  min_cluster_size: 3            # smaller weakly connected components stay their own cluster
+  stability_seeds: [42, 43, 44, 45, 46]   # co-membership stability check
+  max_hypothesis_chars: 250
+
+# ---------------------------------------------------------------------------
+# Priority score (guideline §10). Weights sum to 1.0; components are percentile
+# ranks, so no single raw amount can dominate.
+# ---------------------------------------------------------------------------
+priority:
+  weights:
+    role: 0.30
+    seed_money: 0.25             # percentile of seed_kzt_attributed
+    seed_reach: 0.20             # percentile of seed_reach
+    payers: 0.15                 # percentile of in_deg
+    cluster: 0.10                # cluster seed density, percentile
+
+  role_weight:
+    coordinator: 1.00
+    consolidator: 0.90
+    distributor: 0.60
+    transit: 0.50
+    terminal: 0.50
+    cutoff: 0.30
+    peripheral: 0.05
+
+  # Law enforcement already knows the 81 seeds; the analyst's value is above them.
+  seed_discount: 0.5
+  # A collector or controller sitting on the traversal frontier is the best
+  # candidate for a hop-5 data request, because the chain probably continues.
+  cutoff_boost: 1.1
+
+  top_n: 30                      # top_nodes.csv rows (>= 20 required)
+
+# ---------------------------------------------------------------------------
+# Evidence and wording (guideline §2, §11)
+# ---------------------------------------------------------------------------
+evidence:
+  max_chars: 200
+  max_why_chars: 200
+  # Never appear in any generated string. Enforced by tests/test_outputs.py.
+  forbidden_words:
+    - criminal
+    - guilty
+    - launderer
+    - "organizer is"
+    - confirmed
+
+# ---------------------------------------------------------------------------
+# Optional features (guideline §14). Off by default so the must-haves stay fast.
+# ---------------------------------------------------------------------------
+extras:
+  cycles: {enabled: false, length_bound: 5}
+  resilience: {enabled: false, remove_top_n: [5, 10, 20]}
+  anomalies: {enabled: false, near_threshold_kzt: 5500, round_amount_modulo: 100000}
+  completeness: {enabled: true}
+
+assistant:
+  enabled: true
+  # The LLM only parses the question and phrases the answer; the facts always
+  # come from deterministic graph functions. Without the key, a dropdown form
+  # calls the same functions.
+  model: claude-sonnet-5
+  max_tokens: 1024

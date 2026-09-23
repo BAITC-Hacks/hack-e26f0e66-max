@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Local scratch (generated outputs ARE committed for the final submission,
+# see guideline.md §5 — only transient files are ignored here)
+*.log
+.streamlit/secrets.toml
+.env
