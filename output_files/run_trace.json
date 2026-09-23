@@ -1,5 +1,5 @@
 {
-  "total_runtime_s": 1.728,
+  "total_runtime_s": 1.7707,
   "runtime_budget_s": 300.0,
   "within_budget": true,
   "totals": {
@@ -22,49 +22,49 @@
   "stages": [
     {
       "name": "ingest",
-      "duration_s": 0.0324,
+      "duration_s": 0.0346,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "profile",
-      "duration_s": 0.0184,
+      "duration_s": 0.019,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "graph",
-      "duration_s": 0.026,
+      "duration_s": 0.0278,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "features",
-      "duration_s": 0.8424,
+      "duration_s": 0.8833,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "temporal",
-      "duration_s": 0.0791,
+      "duration_s": 0.0822,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "attribution",
-      "duration_s": 0.0104,
+      "duration_s": 0.0109,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "agent:planner",
-      "duration_s": 0.0013,
+      "duration_s": 0.0014,
       "notes": [],
       "llm_calls": [],
       "children": []
@@ -78,14 +78,14 @@
     },
     {
       "name": "roles:base",
-      "duration_s": 0.014,
+      "duration_s": 0.0145,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "clustering",
-      "duration_s": 0.4144,
+      "duration_s": 0.4158,
       "notes": [
         "cluster stability mean 0.952"
       ],
@@ -94,49 +94,49 @@
     },
     {
       "name": "roles:coordinator",
-      "duration_s": 0.0196,
+      "duration_s": 0.0194,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "priority",
-      "duration_s": 0.0023,
+      "duration_s": 0.0021,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "extras",
-      "duration_s": 0.1377,
+      "duration_s": 0.1336,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "evidence:templates",
-      "duration_s": 0.0647,
+      "duration_s": 0.0632,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "agent:critic",
-      "duration_s": 0.0028,
+      "duration_s": 0.0027,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "agent:reviewer",
-      "duration_s": 0.0013,
+      "duration_s": 0.0012,
       "notes": [],
       "llm_calls": [],
       "children": []
     },
     {
       "name": "export",
-      "duration_s": 0.0578,
+      "duration_s": 0.0559,
       "notes": [],
       "llm_calls": [],
       "children": []

@@ -1,10 +1,11 @@
-# Demo script — 5 minutes
+# Demo script
 
 **Track 2 — Finances.** HackAlem AI: *Money Graph — reconstructing the
 financial structure of an organized group from a transaction network.*
 
 The brief asks for "a live run and a substantive walkthrough of 2–3 nodes".
-This is that, timed, with the actual account numbers from the committed run.
+This is that, with the actual account numbers from the committed run. Take the
+sections in order; how long each one needs depends on what the jury asks.
 
 > 🎬 **Recorded walkthrough:** [demo video](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)
 >
@@ -25,7 +26,7 @@ a live run instead, open a second terminal ready with `./agent_run.sh`.
 
 ---
 
-## 0:00 — 0:45 · The problem in one breath
+## 1 · The problem in one breath
 
 > "Police give the bank 81 customers who received drug money. That is the
 > **bottom** of the chain — the couriers. Who collects from them, who moves it,
@@ -37,7 +38,7 @@ a live run instead, open a second terminal ready with `./agent_run.sh`.
 
 ---
 
-## 0:45 — 1:30 · Live run
+## 2 · Live run
 
 ```bash
 ./agent_run.sh --offline
@@ -48,7 +49,7 @@ Talk over it:
 > "One command. It builds the environment, runs the pipeline, checks the three
 > required CSVs itself, and opens the interface.
 >
-> **1.7 seconds** against the five-minute limit. `--offline` means no AI calls
+> **Under two seconds** against the brief's five-minute limit. `--offline` means no AI calls
 > at all — I want to show first that the classification is fully deterministic.
 > The AI layer changes the prose, not the roles."
 
@@ -60,7 +61,7 @@ Point at the role histogram as it prints:
 
 ---
 
-## 1:30 — 3:15 · Three accounts
+## 3 · Three accounts
 
 Go to **Account detail**. This is the part the brief asks the jury to test:
 *"the jury names 3 arbitrary gids; within a minute the team explains why the
@@ -110,7 +111,7 @@ Point at the map:
 
 ---
 
-## 3:15 — 4:15 · Agentic, but not a black box
+## 4 · Agentic, but not a black box
 
 Go to **How it decided**.
 
@@ -141,7 +142,7 @@ Scroll to the critic's notes:
 
 ---
 
-## 4:15 — 4:45 · Ask it something
+## 5 · Ask it something
 
 Go to **Ask**:
 
@@ -153,10 +154,10 @@ Go to **Ask**:
 
 ---
 
-## 4:45 — 5:00 · Close
+## 6 · Close
 
-> "Three CSVs in the required schema. 1.7 seconds offline, about 90 seconds with
-> the full agent crew, at twenty-one cents. 74 tests, including one that runs
+> "Three CSVs in the required schema. Under two seconds offline, about a minute
+> with the full agent crew, for pennies. 74 tests, including one that runs
 > the pipeline twice and compares file hashes.
 >
 > It runs on any tabular export, not just these three files. It speaks English,

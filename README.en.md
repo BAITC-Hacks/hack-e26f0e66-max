@@ -6,6 +6,8 @@ network. **Track 2 — Finances.** HackAlem AI case.
 > Languages: [Русский](README.md) · **English** · [Қазақша](README.kk.md)
 >
 > 🎬 **[Demo video](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)**
+>
+> 📦 **[Final deliverables](final_deliverables/)** — the three required exports and the solution diagram
 
 ```bash
 ./agent_run.sh
@@ -78,8 +80,8 @@ Both interfaces read the same exported files, so they always show the same
 numbers. Both open in **Russian** by default — the analyst this is built for
 works in a Kazakhstani bank — with English and Қазақша one click away.
 
-> **Demo walkthrough:** [`docs/demo_script.md`](docs/demo_script.md) — a timed
-> five-minute script with the actual account numbers.
+> **Demo walkthrough:** [`docs/demo_script.md`](docs/demo_script.md) — the
+> live-demo script, with the actual account numbers.
 
 ## Contents
 
@@ -853,7 +855,7 @@ In the order things would bite:
 ├── app/app.py                   # Gradio interface (en / ru / kk)
 ├── docs/
 │   ├── diagram.md               # solution diagram (Mermaid)
-│   ├── demo_script.md           # the 5-minute demo, timed, with real gids
+│   ├── demo_script.md           # the live-demo script, with real gids
 │   └── case_brief.docx          # the organizers' case description
 ├── output_files/                # computation results
 └── tests/test_outputs.py        # 83 tests

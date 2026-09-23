@@ -6,6 +6,8 @@
 > Тілдер: [Русский](README.md) · [English](README.en.md) · **Қазақша**
 >
 > 🎬 **[Шешімнің бейне-демонстрациясы](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)**
+>
+> 📦 **[Қазылар алқасына арналған файлдар](final_deliverables/)** — үш міндетті файл және шешім схемасы
 
 ---
 

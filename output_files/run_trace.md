@@ -2,7 +2,7 @@
 
 ## Latency
 
-- **Total runtime: 1.73 s** (budget 300 s — within)
+- **Total runtime: 1.77 s** (budget 300 s — within)
 - Of which spent waiting on the model: 0.00 s
 
 | Stage | Seconds | Share | LLM calls |
@@ -10,16 +10,16 @@
 | ingest | 0.03 | 2% | 0 |
 | profile | 0.02 | 1% | 0 |
 | graph | 0.03 | 2% | 0 |
-| features | 0.84 | 49% | 0 |
+| features | 0.88 | 50% | 0 |
 | temporal | 0.08 | 5% | 0 |
 | attribution | 0.01 | 1% | 0 |
 | agent:planner | 0.00 | 0% | 0 |
 | agent:calibrator | 0.00 | 0% | 0 |
 | roles:base | 0.01 | 1% | 0 |
-| clustering | 0.41 | 24% | 0 |
+| clustering | 0.42 | 23% | 0 |
 | roles:coordinator | 0.02 | 1% | 0 |
 | priority | 0.00 | 0% | 0 |
-| extras | 0.14 | 8% | 0 |
+| extras | 0.13 | 8% | 0 |
 | evidence:templates | 0.06 | 4% | 0 |
 | agent:critic | 0.00 | 0% | 0 |
 | agent:reviewer | 0.00 | 0% | 0 |

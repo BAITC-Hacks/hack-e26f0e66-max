@@ -26,14 +26,13 @@ Everything the brief asks to be handed over (§10), in one folder.
 
 🎬 **[Demo video](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)**
 
-The brief also asks for a **live** five-minute demo: *"during the demo the jury
+The brief also asks for a **live** demo: *"during the demo the jury
 names a gid — the team finds it on the map and shows its links"*. A recording
 cannot answer an account the jury picks on the spot, so the video complements
 the live run rather than replacing it.
 
 The script for the live demo is [`../docs/demo_script.md`](../docs/demo_script.md)
-— timed, with the real account numbers, and a fallback if anything refuses to
-start.
+— with the real account numbers, and a fallback if anything refuses to start.
 
 To run it:
 

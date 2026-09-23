@@ -6,6 +6,8 @@
 > Языки: **Русский** · [English](README.en.md) · [Қазақша](README.kk.md)
 >
 > 🎬 **[Видео-демонстрация решения](https://drive.google.com/file/d/12QR4d0btDiXnJPrcPog81NrcqCMhTWoe/view?usp=sharing)**
+>
+> 📦 **[Итоговые файлы для жюри](final_deliverables/)** — три обязательные выгрузки и схема решения
 
 ```bash
 ./agent_run.sh
@@ -77,7 +79,7 @@ cp .env.example .env && echo "OPENAI_KEY=sk-ЗАМЕНИТЕ" >> .env
 English и қазақша — в один клик.
 
 > **Сценарий демонстрации:** [`docs/demo_script.md`](docs/demo_script.md) —
-> пятиминутный сценарий с реальными номерами счетов.
+> сценарий живой демонстрации с реальными номерами счетов.
 
 ## Содержание
 
@@ -852,7 +854,7 @@ hypothesis`. `sum_kzt_internal` суммирует рёбра с обоими к
 ├── app/app.py                   # интерфейс Gradio (en / ru / kk)
 ├── docs/
 │   ├── diagram.md               # схема решения (Mermaid)
-│   ├── demo_script.md           # сценарий демонстрации на 5 минут
+│   ├── demo_script.md           # сценарий живой демонстрации
 │   └── case_brief.docx          # описание кейса от организаторов
 ├── output_files/                # результаты расчёта
 └── tests/test_outputs.py        # 83 теста
